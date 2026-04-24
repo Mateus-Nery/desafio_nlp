@@ -1,0 +1,9 @@
+.venv/
+venv
+
+.__pycache__
+__pycache__
+
+dados_grupo_estudos
+
+pdfs_aneel
