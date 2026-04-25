@@ -57,7 +57,10 @@ TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 
 def iter_chunks(path: Path, limit: int | None = None) -> Iterator[dict]:
-    with path.open() as f:
+    # encoding="utf-8" explícito: no Windows o default é cp1252 e quebra em
+    # bytes >= 0x80 (texto jurídico PT-BR tem 0x81 com frequência). Mesmo
+    # fix aplicado anteriormente em src/chunk.py (commit 0056f65).
+    with path.open(encoding="utf-8") as f:
         for i, line in enumerate(f):
             if limit and i >= limit:
                 return

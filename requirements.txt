@@ -11,6 +11,10 @@ sentence-transformers>=3.0
 qdrant-client>=1.12
 rank_bm25>=0.2.2
 torch>=2.2               # CPU/CUDA/MPS autodetect
+# IMPORTANTE: no Windows o `pip install torch` puro instala a build CPU-only.
+# Para usar GPU NVIDIA na indexação (Fase 4), instale ANTES do requirements:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+# Linux/Mac: o pip já resolve a build certa automaticamente.
 numpy>=1.26
 
 # Fase 6 — Geração

@@ -10,18 +10,23 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-### 🔨 Fase 4 — Indexação (código pronto, falta executar dense)
-- **Owner:** @pedro (worktree `kind-panini-16a380`)
-- **Status:** código completo (`src/index.py`, `docker-compose.yml`, `requirements.txt`). BM25 validado em smoke (1k chunks → 2.3MB pickle, query "tarifa de uso..." retorna top-3 coerentes)
-- **Falta executar:**
-  1. `pip install -r requirements.txt` (FlagEmbedding, qdrant-client, torch são pesados)
-  2. `docker compose up -d` para subir Qdrant em localhost:6333
-  3. `python -m src.index --chunks artifacts/chunks.jsonl --bm25-out artifacts/bm25_index.pkl` — vai gerar BM25 (~rápido) e indexar 160k chunks no Qdrant via bge-m3 (cara em CPU; ~30-60min em GPU consumer)
-- **Decisão pendente:** rodar local ou publicar snapshot Qdrant + bm25.pkl como GitHub Release
+_(nada — última fase em andamento foi a Fase 4, fechada. Próximo livre: upload do GitHub Release com os 3 artefatos do snapshot.)_
 
 ---
 
 ## Fases concluídas (no master)
+
+### ✅ Fase 4 — Indexação (executada e validada)
+- **Owner:** @mateus (master, RTX 3050 6 GB Laptop)
+- **Resultado:** 160.267 chunks indexados em Qdrant (dense bge-m3 1024-dim cosine + sparse lexical_weights, payload com texto cru e metadados). Coleção `aneel_chunks`, status green.
+- **Tempo:** 130,1 min de dense+sparse a 20,5 ch/s (batch 80 em GPU). BM25 separadamente em 31s.
+- **Artefatos do "Caminho 2"** (gerados em `artifacts/`, gitignored, prontos pra Release):
+  - `qdrant_snapshot.tar` — 1,22 GB (sha256 `fc3ea6e810d691...`)
+  - `bm25_index.pkl` — 244 MB (sha256 `fba807625c2367...`)
+  - `manifest.json` — versões + hashes
+- **Restore validado:** drop coleção → upload snapshot via API REST → 14s → 160.267 pontos restaurados → 5 queries dense retornam top-3 coerentes (REN 1000 Art 528 pra "prazo de ligação", NREH pra "TUSD", REN 1000 Art 655-B pra "microgeração", etc).
+- **Bug corrigido durante a execução:** `src/index.py` lia `chunks.jsonl` sem `encoding="utf-8"` — mesmo bug do `chunk.py` (commit `0056f65`), agora também resolvido aqui.
+- **Próximo livre:** upload GitHub Release com os 3 artefatos.
 
 ### ✅ Fase 1 — Ingestão (download + análise)
 - 26.731 PDFs baixados (`data/pdfs_aneel/`), 100% text-native
