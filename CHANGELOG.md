@@ -7,6 +7,15 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — 2026-04-24 — Fix encoding UTF-8 explícito no chunker (Windows)
+
+**Autor:** Mateus (worktree `objective-blackburn-7f6ac0`)
+
+### Fixed
+- `src/chunk.py:398`: `process()` abria `parsed.jsonl` e `chunks.jsonl` sem `encoding="utf-8"`. Em Windows o default é cp1252, o que fazia `UnicodeDecodeError: 'charmap' codec can't decode byte 0x81` ao processar o corpus completo (texto jurídico em PT-BR tem byte 0x81 frequente). Funcionava no Mac/Linux por terem UTF-8 default. Agora explícito nos dois lados (leitura e escrita).
+
+---
+
 ## d4e9fad — 2026-04-24 — Atualiza README pós-remoção do contexto_download
 
 **Autor:** Mateus (worktree `objective-blackburn-7f6ac0`)

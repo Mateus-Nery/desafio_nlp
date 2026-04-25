@@ -395,7 +395,7 @@ def process(in_path: Path, out_path: Path, limit: int | None = None) -> dict:
     n_skipped = 0
     t0 = time.time()
 
-    with in_path.open() as fin, out_path.open("w") as fout:
+    with in_path.open(encoding="utf-8") as fin, out_path.open("w", encoding="utf-8") as fout:
         for line in fin:
             line = line.strip()
             if not line:
