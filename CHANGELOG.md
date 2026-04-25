@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — Fase 4: indexação (bge-m3 + Qdrant + BM25)
+## 17cca7e — 2026-04-24 — Fase 4: indexação (bge-m3 + Qdrant + BM25)
 
 **Autor:** Pedro (worktree `kind-panini-16a380`)
 
