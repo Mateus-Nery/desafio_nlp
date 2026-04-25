@@ -155,7 +155,6 @@ desafio_nlp/
 ├── Makefile                           ← orquestração de tarefas
 ├── .env.example                       ← ANTHROPIC_API_KEY=
 ├── .gitignore
-├── contexto_download_pdfs_aneel.md    ← contexto original Fase 1
 │
 ├── data/
 │   ├── dados_grupo_estudos/           ← 3 JSONs ANEEL (entrada)
