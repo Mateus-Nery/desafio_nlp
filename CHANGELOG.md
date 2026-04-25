@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-24 — Remove `contexto_download_pdfs_aneel.md` obsoleto
+## a71adf8 — 2026-04-24 — Remove `contexto_download_pdfs_aneel.md` obsoleto
 
 **Autor:** Mateus (worktree `objective-blackburn-7f6ac0`)
 
