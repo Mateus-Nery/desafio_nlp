@@ -7,6 +7,39 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — Atualização da documentação pós-Release v0.4.0 + handoff pra Fase 5
+
+**Autor:** Mateus (master)
+
+### Changed
+- `README.md`:
+  - Status no topo agora reflete Fases 1-4 concluídas + Release v0.4.0 publicada
+  - Diagrama de arquitetura: Fase 2/3/4 marcadas com ✅, Fase 5 vira "🔨 próxima"
+  - Seção "Como Rodar":
+    - **Caminho 2 promovido a "recomendado"** — comandos raw bash com URL fixa da v0.4.0 (substitui `make restore-artifacts` que não existia)
+    - **Caminho 1** reescrito com comandos reais (`python -m src.parse_pdfs`, `python -m src.chunk`, `python -m src.index`) substituindo `make download/parse/chunk/index`
+    - **Caminho 3** agora aponta pro `scripts/smoke_query_qdrant.py` real (substitui `make smoke` que não existia)
+    - Tabela de tempos da indexação ganhou linha "RTX 3050 Mobile" com tempo medido (130 min, batch 80)
+    - Setup adicionou nota CUDA Windows (instalar torch antes via `--index-url cu124`)
+    - Removida menção a `chunks.jsonl` na tabela do snapshot (ficou só no Caminho 1)
+  - Seção "Fase 3" reescrita como ✅ concluída com resultados reais (160.267 chunks, distribuição por tier, schema do payload)
+  - Seção "Fase 4" reescrita como ✅ concluída com resultados reais (130 min em RTX 3050, snapshot 1.22 GB, validação de smoke)
+  - Adicionado bloco com comandos do snapshot (POST /snapshots, docker cp)
+  - Seção "Replicabilidade": link direto pra Release v0.4.0, removida menção a `make smoke`
+  - Tabela "Roadmap" atualizada: Fases 1-4 ✅, Snapshot+Release ✅, Fase 5 🔨, demais 📋, adicionada linha "Makefile (nice-to-have)"
+- `HANDOFF.md`:
+  - Adicionado bloco **"Para o Pedro começar a Fase 5"** com tudo que ele precisa pra começar sem revalidar nada: estrutura do BM25 pickle, payload da coleção Qdrant, decisões em aberto pra ele tomar (RRF de 2 ou 3 listas, fusão nativa Qdrant vs manual, reranker GPU vs CPU, BM25 lazy load), gotchas conhecidos (UTF-8 encoding, qdrant-client API mudou em 1.17, bge-m3 cache na 1ª query)
+  - Fase 3 atualizada de "código pronto" pra "executado e validado" com resultado do corpus completo
+  - Fase 4 removida da lista de "Próximas fases — não iniciadas" (já feita)
+  - Adicionada linha "Makefile com targets restore-artifacts/smoke" como nice-to-have livre
+  - Sugestão explícita de divisão: Pedro pega Fase 5; Mateus esboça golden set ou faz Makefile
+
+### Notes
+- Sem mudanças de código nesta entrada — só docs.
+- Commits anteriores desta sessão (`2d3df09`, `a63aaf6`, `a357547`, `89c95c1`) entregaram a Fase 4 + Release; este apenas atualiza a narrativa pra examinador externo encontrar o caminho mais curto.
+
+---
+
 ## a357547 — 2026-04-25 — Publicação do GitHub Release v0.4.0
 
 **Autor:** Mateus (master)

@@ -5,9 +5,10 @@ ANEEL — Agência Nacional de Energia Elétrica. Cobre **26.731 PDFs** dos anos
 2016, 2021 e 2022, totalizando ~117 mil páginas e ~53 milhões de tokens de
 legislação do setor elétrico brasileiro.
 
-> **Status atual:** Fase 1 (download) e análise exploratória **concluídas**.
-> Fases 2-8 (parser, chunking, indexação, retrieval, geração, avaliação,
-> serving) **planejadas**, em construção.
+> **Status atual:** Fases 1-4 **concluídas** (download, parser, chunking,
+> indexação) e [GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0)
+> publicada com snapshot pré-indexado pronto para uso. Fases 5-8 (retrieval,
+> geração, avaliação, serving) **planejadas**, em construção.
 
 ---
 
@@ -60,35 +61,36 @@ conseguir clonar o repo e ter o sistema funcionando sem dor.
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FASE 2 — PARSER (🔨 próxima)                                    │
-│     PDFs → PyMuPDF → JSONL por documento                         │
+│  FASE 2 — PARSER (✅ concluída)                                  │
+│     PDFs → PyMuPDF → parsed.jsonl (1 doc por linha)              │
 │     • Texto limpo (strip headers, FL X de Y, hífens)             │
 │     • Tabelas via page.find_tables() → markdown                  │
 │     • Detecção e preservação de hierarquia (Art./§/Inciso)       │
-│     • Metadata herdada de _manifest.jsonl                        │
+│     • Output: 26.731 docs, 54,4 M tokens, 39.390 tabelas         │
 └──────────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FASE 3 — CHUNKING 3-TIER (📋 planejada)                         │
+│  FASE 3 — CHUNKING 3-TIER (✅ concluída)                         │
 │     Tier A → split por Art./Anexo  (REN, REH, RES, NDSP…)        │
 │     Tier B → parágrafo + merge ~500 tok  (AREA, REA, PRT…)       │
 │     Tier C → 1 PDF = 1 chunk         (DSP curto, ECT, AVS…)      │
-│     Output: chunks.jsonl  (~150-300k chunks estimados)           │
+│     Output: 160.267 chunks (A=98.7k, B=50.0k, C=11.5k)           │
 └──────────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FASE 4 — INDEXAÇÃO (📋 planejada)                               │
+│  FASE 4 — INDEXAÇÃO (✅ concluída)                               │
 │     • Dense embeddings: BAAI/bge-m3 (1024-dim, multilingual)     │
 │     • Sparse (lexical): bge-m3 sparse + BM25 (rank_bm25)         │
-│     • Vector store: Qdrant (docker-compose, payload indexado)    │
-│     • Metadata fields: tipo_ato, ano, tier, num_artigo, url      │
+│     • Vector store: Qdrant 1.12.4 (docker), payload indexado     │
+│     • Metadata fields: tipo_ato, year, tier, doc_id              │
+│     • Snapshot público: GitHub Release v0.4.0 (1,46 GB total)    │
 └──────────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FASE 5 — RETRIEVAL (📋 planejada)                               │
+│  FASE 5 — RETRIEVAL (🔨 próxima)                                 │
 │     query  →  embed (bge-m3)                                     │
 │            →  [dense top-30] + [BM25 top-30]                     │
 │            →  RRF fusion                                          │
@@ -203,75 +205,68 @@ desafio_nlp/
 
 ### Pré-requisitos comuns
 
-- Python 3.11+
+- Python 3.11+ (3.10 também funciona)
 - Docker + Docker Compose
 - (opcional) GPU CUDA ou Apple MPS — autodetectada
-- ~10 GB livres em disco (PDFs + indexes + modelos)
+- ~5 GB livres em disco para o Caminho 2 (modelo bge-m3 + snapshot + Qdrant volume)
+- ~10 GB livres em disco para o Caminho 1 (acima + 4 GB de PDFs)
 
 ### Setup inicial (todos os caminhos)
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Mateus-Nery/desafio_nlp.git
 cd desafio_nlp
 
-# Cria venv + instala deps com versões fixas
+# Cria venv
 python -m venv .venv
 source .venv/bin/activate         # Windows: .venv\Scripts\activate
+
+# (opcional, mas recomendado se tem GPU NVIDIA no Windows)
+# Sem isso o pip install vem com torch CPU-only e a Fase 4 fica 4-6 h em vez de 2 h
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+
 pip install -r requirements.txt
 
-# Copia template de env e adiciona sua chave Claude
+# Copia template de env e adiciona sua chave Claude (necessária só pra Fase 6)
 cp .env.example .env
 # editar .env: ANTHROPIC_API_KEY=sk-ant-...
 
-# Sobe Qdrant
+# Sobe Qdrant em localhost:6333 (volume persistente)
 docker compose up -d
 ```
 
-### Caminho 1 — Tudo do zero (fiel ao código)
-
-Reproduz **todas as fases** do zero. Lento mas total.
-
-```bash
-make download    # Fase 1 (~13 min) — baixa 26.731 PDFs da ANEEL
-make analyze     # análise exploratória do corpus
-make parse       # Fase 2 — extrai texto dos PDFs
-make chunk       # Fase 3 — chunking 3-tier
-make index       # Fase 4 — embeddings + Qdrant + BM25
-make eval        # Fase 7 — roda golden set, gera relatório
-make serve       # Fase 8 — sobe API + UI
-```
-
-**Tempos esperados (fase mais cara é `index`):**
-
-| Hardware | `make index` (~200k chunks) |
-|---|---|
-| GPU consumer (RTX 3080+) | 30-60 min |
-| GPU A100 | 10-15 min |
-| CPU 8-core (batched, FP16) | 1-3 h |
-| CPU 4-core | 4-6 h |
-
-### Caminho 2 — Bootstrap com snapshot pré-construído ⚡
+### Caminho 2 — Bootstrap com snapshot pré-construído ⚡ (recomendado)
 
 Pula a parte cara restaurando os artefatos pré-computados publicados como
-GitHub Release. **Esse caminho é autossuficiente** — o examinador *não*
-precisa baixar os 4 GB de PDFs nem rodar parser/chunker. Só Qdrant + BM25
-+ código + chave Claude bastam para responder qualquer query.
+[GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0).
+**Esse caminho é autossuficiente** — o examinador *não* precisa baixar os
+4 GB de PDFs nem rodar parser/chunker. Só Qdrant + BM25 + código + chave
+Claude bastam para responder qualquer query.
 
 ```bash
-make restore-artifacts   # baixa qdrant_snapshot + bm25_index.pkl
-                         # restaura no Qdrant
-                         # ~5-10 min total
-make serve               # sobe API + UI
+mkdir -p artifacts
+
+# Baixa snapshot Qdrant (1.22 GB) + índice BM25 (244 MB)
+curl -L -o artifacts/qdrant_snapshot.tar \
+  https://github.com/Mateus-Nery/desafio_nlp/releases/download/v0.4.0/qdrant_snapshot.tar
+curl -L -o artifacts/bm25_index.pkl \
+  https://github.com/Mateus-Nery/desafio_nlp/releases/download/v0.4.0/bm25_index.pkl
+
+# Restaura snapshot na coleção aneel_chunks (~14 s)
+curl -X POST 'http://localhost:6333/collections/aneel_chunks/snapshots/upload?priority=snapshot' \
+     -F snapshot=@artifacts/qdrant_snapshot.tar
+
+# Smoke: 5 queries dense, valida que retrieval responde
+python scripts/smoke_query_qdrant.py
 ```
 
-**O que tem no snapshot (Release):**
+**O que tem na Release v0.4.0:**
 
 | Arquivo | Tamanho | Obrigatório? | Para quê |
 |---|---|---|---|
-| `qdrant_snapshot.tar` | ~1-2 GB | ✅ sim | Coleção Qdrant com vetores dense+sparse e o **texto cru de cada chunk no payload** — não precisa de outro lookup |
-| `bm25_index.pkl` | ~370 MB | ✅ sim | Índice BM25 com payloads mínimos (chunk_id, tipo_ato, year, tier, url) |
-| `chunks.jsonl` | ~342 MB | opcional | Apenas se você quiser **re-indexar** com outro modelo de embedding |
-| `manifest.json` | <1 KB | ✅ sim | Versões dos modelos + hashes para validação |
+| `qdrant_snapshot.tar` | 1,22 GB | ✅ sim | Coleção `aneel_chunks` com 160.267 pontos: dense (bge-m3 1024-dim cosine) + sparse (lexical_weights), payload com texto cru e metadados |
+| `bm25_index.pkl` | 244 MB | ✅ sim | Índice BM25 Okapi serializado, tokenizer regex `\w+` lowercase |
+| `manifest.json` | 1,8 KB | ✅ sim | Versões dos modelos + SHA-256 dos artefatos |
 
 **Por que isso é autossuficiente:** o `src/index.py` armazena o texto cru
 de cada chunk dentro do payload do Qdrant (e do BM25 pickle). Quando o
@@ -286,31 +281,71 @@ inline — não há lookup posterior em arquivos locais.
   é instantâneo. Para acelerar, pode ser pré-baixado com:
   `python -c "from FlagEmbedding import BGEM3FlagModel; BGEM3FlagModel('BAAI/bge-m3')"`.
 
-Pipeline completo continua existindo e funcionando — snapshot é só atalho.
-Examinador rigoroso pode rodar **Caminho 1** para validar do zero.
+### Caminho 1 — Tudo do zero (fiel ao código)
+
+Reproduz **todas as fases** do zero a partir dos 3 JSONs ANEEL. Lento mas
+total. Útil pra examinador rigoroso que quer validar a reprodutibilidade.
+
+```bash
+# Fase 1 — baixa 26.731 PDFs da ANEEL (~13 min)
+python scripts/download_aneel_pdfs.py \
+  --json-dir data/dados_grupo_estudos \
+  --output-dir data/pdfs_aneel \
+  --concurrency 8
+
+# Análise exploratória do corpus (opcional, valida saúde dos PDFs)
+python scripts/analyze_pdfs.py \
+  --pdfs-dir data/pdfs_aneel \
+  --report-json data/pdfs_aneel/_analysis.json
+
+# Fase 2 — extrai texto dos PDFs (~30 min com 8 cores)
+python -m src.parse_pdfs \
+  --pdfs-root data/pdfs_aneel \
+  --out artifacts/parsed.jsonl \
+  --workers 8
+
+# Fase 3 — chunking 3-tier (~10 s)
+python -m src.chunk \
+  --in artifacts/parsed.jsonl \
+  --out artifacts/chunks.jsonl
+
+# Fase 4 — embeddings + Qdrant + BM25 (depende do hardware, ver tabela abaixo)
+python -m src.index \
+  --chunks artifacts/chunks.jsonl \
+  --bm25-out artifacts/bm25_index.pkl \
+  --batch-size 80
+```
+
+**Tempos esperados na Fase 4** (a mais cara — 160.267 chunks bge-m3):
+
+| Hardware | Indexação dense+sparse |
+|---|---|
+| GPU desktop (RTX 3080+) | 30-60 min |
+| GPU A100 | 10-15 min |
+| **GPU laptop (RTX 3050 6 GB)** | **~130 min** (medido) |
+| CPU 8-core (batched, FP16) | 1-3 h |
+| CPU 4-core | 4-6 h |
 
 ### Caminho 3 — Smoke test rápido
 
-Valida que tudo está corretamente instalado, com subset de 200 PDFs.
+Valida que tudo está corretamente instalado e responde. Pré-requisito:
+Caminho 2 já restaurou o snapshot.
 
 ```bash
-make smoke   # ~2 min
+# Carrega bge-m3 (cache local), encoda 5 queries de domínio,
+# faz busca dense via Qdrant, mostra top-3 com payload completo
+python scripts/smoke_query_qdrant.py
 ```
 
-Roda todas as fases num subset, executa 5 queries de exemplo, valida
-formato dos artefatos.
+Saída esperada: top-3 coerente para "TUSD", "prazo de ligação",
+"microgeração distribuída", etc. Tempo total: ~20 s (incluindo carga
+do bge-m3 do cache, ~3 s).
 
 ### Query interativa
 
-```bash
-# Após qualquer um dos 3 caminhos:
-python -m src.pipeline --query "Qual a tarifa de uso do sistema de distribuição?"
-
-# Ou via API (depois de make serve):
-curl -X POST http://localhost:8000/query -d '{"q": "..."}'
-
-# Ou via Streamlit: http://localhost:8501
-```
+> Disponível após Fase 5/6 (ver Roadmap). Hoje, a forma de inspecionar
+> resultados é via `scripts/smoke_query_qdrant.py` ou consultando o Qdrant
+> diretamente via REST/dashboard em `http://localhost:6333/dashboard`.
 
 ---
 
@@ -591,7 +626,7 @@ artifacts/
 
 ---
 
-### Fase 3 — Chunking (📋 planejada)
+### Fase 3 — Chunking (✅ concluída)
 
 Módulo: `src/chunk.py`
 
@@ -619,51 +654,118 @@ Documentos onde a unidade natural de recuperação é o **artigo** ou o
 - **Tipos:** DSP, ECP, ECT, EDT, AVS, ACP, ATS
 - **Estratégia:** PDF inteiro = 1 chunk (quase todos <2k tokens)
 
-**Metadado obrigatório por chunk:**
+#### Resultados (corpus completo)
+
+- 26.731 docs → **160.267 chunks** em 8 s
+- Tier A: 98.709 (61,6%) — REA/AREA/PRT/ADSP/DSP dominam
+- Tier B:  50.052 (31,2%)
+- Tier C:  11.506 (7,2%)
+- 0 chunks duplicados, hard cap de 1500 tokens respeitado
+
+#### Metadado por chunk (schema final)
 
 ```json
 {
-  "chunk_id": "dsp2022021spde__c0",
-  "doc_id": "dsp2022021spde",
-  "tipo_ato": "DSP",
-  "ano": 2022,
-  "tier": "C",
-  "num_artigo": null,
-  "titulo": "DSP - DESPACHO 021",
-  "url": "https://www2.aneel.gov.br/cedoc/dsp2022021spde.pdf",
-  "texto": "..."
+  "chunk_id": "2022/ren20221008__art1",
+  "doc_id": "2022/ren20221008",
+  "tipo_ato": "ren",
+  "year": 2022,
+  "tier": "A",
+  "section_type": "artigo",
+  "section_label": "Art. 1º",
+  "section_parent": "",
+  "section_title": "",
+  "title": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.008, DE 15 DE MARÇO DE 2022",
+  "ementa": "Dispõe sobre a Conta Escassez Hídrica...",
+  "filename": "ren20221008.pdf",
+  "url": "https://www2.aneel.gov.br/cedoc/ren20221008.pdf",
+  "char_start": 798, "char_end": 1313,
+  "n_chars": 515, "n_tokens_est": 129,
+  "text": "Art. 1º Esta Resolução estabelece..."
 }
 ```
 
 ---
 
-### Fase 4 — Indexação (📋 planejada)
+### Fase 4 — Indexação (✅ concluída)
 
 Módulo: `src/index.py`
 
-#### Embeddings (dense)
+#### Embeddings (dense + sparse num único forward)
 
-- Modelo: **`BAAI/bge-m3`** (1024-dim, multilingual, contexto até 8k)
-- Backend: `sentence-transformers` ou ONNX Runtime
-- GPU autodetect (CUDA / Apple MPS / CPU)
-- Batch size dinâmico com base em VRAM disponível
+- Modelo: **`BAAI/bge-m3`** commit `5617a9f6` (1024-dim, multilingual, contexto até 8k)
+- Backend: `FlagEmbedding.BGEM3FlagModel` (gera dense + sparse em 1 forward)
+- GPU autodetect (CUDA → Apple MPS → CPU); fp16 quando não-CPU
+- `batch-size` configurável (default 32; **80 recomendado em GPU 6+ GB**)
 
 #### Vector store
 
-- **Qdrant** rodando via `docker-compose.yml`
-- Coleção: `aneel_chunks`
-- Distance: cosine
-- Payload indexado nos campos: `tipo_ato`, `ano`, `tier`, `num_artigo`
+- **Qdrant 1.12.4** rodando via `docker-compose.yml`
+- Coleção: `aneel_chunks` (named vectors `dense` + `sparse`)
+- Distance: cosine; sparse usa `lexical_weights` do bge-m3
+- Payload indexado nos campos: `tipo_ato`, `year`, `tier`, `doc_id`
+- **Texto cru no payload** (decisão chave de design — examinador não precisa
+  de lookup posterior em arquivos locais)
 
 #### Sparse / lexical
 
-- **bge-m3 sparse** (vem do mesmo passe do dense)
-- **BM25** via `rank_bm25` como redundância (corpus pequeno o suficiente
-  pra caber em memória)
+- **bge-m3 sparse** (vem do mesmo passe do dense, no Qdrant como named vector)
+- **BM25 Okapi** via `rank_bm25` como redundância textual independente
+  (tokenizer regex `\w+` lowercase, sem stopwords — texto jurídico precisa
+  dos conectores; IDF cuida do peso)
+
+#### Resultados (corpus completo, RTX 3050 6 GB Laptop)
+
+| Métrica | Valor |
+|---|---|
+| Chunks indexados | **160.267 / 160.267 (100%)** |
+| Tempo BM25 | 31 s → 244 MB pickle |
+| Tempo dense+sparse | **130,1 min @ 20,5 ch/s, batch 80** |
+| VRAM em uso | 3,1 GB / 6 GB (folga p/ batch maior em GPU >6 GB) |
+| Snapshot Qdrant | 1,22 GB |
+| Smoke restore | drop → upload → 14 s → mesmas estatísticas → 5 queries dense top-3 coerente |
+
+#### Comando
+
+```bash
+# Corpus completo (~2 h em RTX 3050 com batch 80)
+python -m src.index \
+  --chunks artifacts/chunks.jsonl \
+  --bm25-out artifacts/bm25_index.pkl \
+  --batch-size 80
+
+# Smoke (200 chunks, sem mexer no Qdrant principal)
+python -m src.index \
+  --chunks artifacts/chunks.jsonl \
+  --bm25-out /tmp/bm25_smoke.pkl \
+  --collection aneel_chunks_smoke \
+  --limit 200
+
+# Só BM25 (já indexou dense, refazer só BM25)
+python -m src.index \
+  --chunks artifacts/chunks.jsonl \
+  --bm25-out artifacts/bm25_index.pkl \
+  --skip-dense
+```
+
+#### Snapshot e Release
+
+Após indexação, geramos snapshot do Qdrant via API e publicamos como
+[GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0).
+Detalhes do uso em [Caminho 2](#caminho-2--bootstrap-com-snapshot-pré-construído-).
+
+```bash
+# Cria snapshot (~6 s, 1,22 GB)
+curl -X POST http://localhost:6333/collections/aneel_chunks/snapshots
+
+# Copia do volume Docker pra disco local
+docker cp aneel-qdrant:/qdrant/snapshots/aneel_chunks/<snapshot-name>.snapshot \
+          artifacts/qdrant_snapshot.tar
+```
 
 ---
 
-### Fase 5 — Retrieval (📋 planejada)
+### Fase 5 — Retrieval (🔨 próxima)
 
 Módulo: `src/retrieve.py`
 
@@ -769,12 +871,10 @@ Será feito **se houver tempo** após as Fases 2-7.
 2. **Docker Compose** sobe Qdrant determinístico, sem instalar nada local
 3. **Modelos cacheados** automaticamente pelo HuggingFace (`~/.cache/huggingface`)
 4. **GPU autodetect** com fallback CPU avisado (warning explícito de tempo)
-5. **Snapshot pré-construído** publicado como GitHub Release — examinador
-   pode pular a parte cara
-6. **Smoke test** rápido (`make smoke`, ~2 min) valida o setup
-7. **Idempotência total** — rodar 2× não quebra nada
-8. **Erros descritivos** — falta de chave/modelo dá mensagem clara, não
-   stacktrace cru
+5. **Snapshot pré-construído** publicado como [GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0) — examinador pula a parte cara em ~5-10 min
+6. **Smoke test** rápido via `scripts/smoke_query_qdrant.py` (~20 s) valida que retrieval responde após restore
+7. **Idempotência total** — rodar 2× não quebra nada (UUIDs determinísticos por `chunk_id`, `--resume` em downloader/parser)
+8. **Erros descritivos** — falta de chave/modelo dá mensagem clara, não stacktrace cru
 
 ### Cross-platform
 
@@ -935,21 +1035,19 @@ Relatório completo per-PDF em `data/pdfs_aneel/_analysis.json`.
 
 ## Roadmap
 
-| Fase | Status | Estimativa |
+| Fase | Status | Detalhes |
 |---|---|---|
-| 1. Ingestão (download) | ✅ Concluída | — |
-| 1b. Análise exploratória | ✅ Concluída | — |
-| 2. Parser PyMuPDF | 🔨 Próxima | 1-2 dias |
-| 3. Chunking 3-tier | 📋 Planejada | 1 dia |
-| 4. Indexação (embed + Qdrant + BM25) | 📋 Planejada | 1 dia |
-| 5. Retrieval (hybrid + rerank) | 📋 Planejada | 1 dia |
-| 6. Geração (Claude + prompt) | 📋 Planejada | meio dia |
-| 7. Avaliação (Ragas + golden) | 📋 Planejada | 1 dia |
-| 8. Serving (FastAPI + Streamlit) | 📋 Opcional | 1 dia |
-| Snapshot + Release | 📋 Planejada | meio dia |
-| Documentação final | 📋 Contínua | — |
-
-**Total estimado para protótipo end-to-end avaliado:** ~1 semana.
+| 1. Ingestão (download) | ✅ Concluída | 26.731 PDFs em 13 min |
+| 1b. Análise exploratória | ✅ Concluída | 100% text-native, 0 OCR |
+| 2. Parser PyMuPDF | ✅ Concluída | 26.731 docs em 29,7 min, 54,4 M tokens |
+| 3. Chunking 3-tier | ✅ Concluída | 160.267 chunks em 8 s |
+| 4. Indexação (embed + Qdrant + BM25) | ✅ Concluída | 130 min em RTX 3050 (batch 80) |
+| Snapshot + Release | ✅ Concluída | v0.4.0 publicada (1,46 GB de assets) |
+| 5. Retrieval (hybrid + rerank) | 🔨 Próxima | dense+BM25 → RRF → bge-reranker-v2-m3 |
+| 6. Geração (Claude + prompt) | 📋 Planejada | Sonnet 4.6 com citações enforçadas |
+| 7. Avaliação (Ragas + golden) | 📋 Planejada | hit@k, MRR, faithfulness, answer relevance |
+| 8. Serving (FastAPI + Streamlit) | 📋 Opcional | endpoint `/query` + UI demo |
+| Makefile com targets `make restore-artifacts`/`make smoke` | 📋 Nice-to-have | hoje os comandos são raw bash |
 
 ---
 
