@@ -524,12 +524,53 @@ python -m src.parse_pdfs --resume \
 - 1 ocorrência residual de "AGÊNCIA NACIONAL..." (legítima, no corpo)
 - 3/3 footnotes extraídas para campo separado
 
+#### Resultados — corpus completo (n=26.731)
+
+Execução em 8 workers (cores), 1.780s = 29.7 min, **15.0 doc/s**, **0 falhas**.
+
+| Métrica                  | Valor             |
+| ------------------------ | ----------------- |
+| Docs processados         | 26.731 / 26.731 (**100%**) |
+| Falhas                   | 0                 |
+| Total chars              | 201,3 M           |
+| Tokens estimados         | 54,4 M            |
+| OCR-suspect              | 7 (0,03%)         |
+| Texto vazio (<100 chars) | 7 (0,03%)         |
+| Tabelas extraídas        | 39.390            |
+| Footnotes extraídas      | 8.274             |
+| Struct nodes médio       | 4,1 / doc         |
+| Tamanho `parsed.jsonl`   | 275 MB            |
+
+**Title extraction rate por tipo (atos principais):**
+
+| Tipo  | N total | Com title  | Taxa    |
+| ----- | ------- | ---------- | ------- |
+| `ren` | 154     | 154        | **100,0%** |
+| `rea` | 3.894   | 3.894      | **100,0%** |
+| `reh` | 474     | 474        | **100,0%** |
+| `prt` | 3.174   | 3.167      | 99,8%   |
+| `ndsp`| 478     | 476        | 99,6%   |
+| `dsp` | 9.932   | 9.844      | 99,1%   |
+| `nreh`| 224     | 221        | 98,7%   |
+| `aprt`| 562     | 553        | 98,4%   |
+| `area`| 3.919   | 3.836      | 97,9%   |
+| `areh`| 475     | 463        | 97,5%   |
+| `adsp`| 2.098   | 1.856      | 88,5%   |
+| `aren`| 205     | 178        | 86,8%   |
+
+Tipos com taxa baixa (`ect`=2%, `acp`=20%, `aap`=12%) são **extratos** e
+**comunicados** que **não têm cabeçalho formal** — comportamento esperado,
+não é bug. Esses tipos representam < 3% do corpus.
+
+**Processo extraction rate**: ≥95% para `rea`/`reh`/`prt`, ≥89% para
+`dsp`/`adsp`/`ndsp`/`aprt`, com média geral de ~88%.
+
 #### Saídas
 
 ```
 artifacts/
-├── parsed.jsonl          # 1 linha por doc, ~26.7k linhas, ~150-200 MB
-└── parse.log             # logs de execução, fails por arquivo
+├── parsed.jsonl          # 1 linha por doc, 26.731 linhas, 275 MB
+└── parse.log             # logs de execução, throughput, falhas
 ```
 
 ---
