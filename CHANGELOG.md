@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-24 — Fix encoding UTF-8 explícito no chunker (Windows)
+## 0056f65 — 2026-04-24 — Fix encoding UTF-8 explícito no chunker (Windows)
 
 **Autor:** Mateus (worktree `objective-blackburn-7f6ac0`)
 
