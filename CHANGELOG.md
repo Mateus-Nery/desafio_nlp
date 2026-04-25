@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — Execução da Fase 4: indexação completa, snapshot, smoke do restore
+## 2d3df09 — 2026-04-25 — Execução da Fase 4: indexação completa, snapshot, smoke do restore
 
 **Autor:** Mateus (master, RTX 3050 6 GB Laptop)
 
