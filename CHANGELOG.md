@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-24 — Atualiza README pós-remoção do contexto_download
+## d4e9fad — 2026-04-24 — Atualiza README pós-remoção do contexto_download
 
 **Autor:** Mateus (worktree `objective-blackburn-7f6ac0`)
 
