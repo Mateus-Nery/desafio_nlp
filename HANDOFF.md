@@ -10,7 +10,14 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-_(nada em execução — Fase 2 e Fase 3 mergeadas em master)_
+### 🔨 Fase 4 — Indexação (código pronto, falta executar dense)
+- **Owner:** @pedro (worktree `kind-panini-16a380`)
+- **Status:** código completo (`src/index.py`, `docker-compose.yml`, `requirements.txt`). BM25 validado em smoke (1k chunks → 2.3MB pickle, query "tarifa de uso..." retorna top-3 coerentes)
+- **Falta executar:**
+  1. `pip install -r requirements.txt` (FlagEmbedding, qdrant-client, torch são pesados)
+  2. `docker compose up -d` para subir Qdrant em localhost:6333
+  3. `python -m src.index --chunks artifacts/chunks.jsonl --bm25-out artifacts/bm25_index.pkl` — vai gerar BM25 (~rápido) e indexar 160k chunks no Qdrant via bge-m3 (cara em CPU; ~30-60min em GPU consumer)
+- **Decisão pendente:** rodar local ou publicar snapshot Qdrant + bm25.pkl como GitHub Release
 
 ---
 
