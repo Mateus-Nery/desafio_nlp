@@ -10,7 +10,7 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-_(nada — última fase em andamento foi a Fase 4, fechada. Próximo livre: upload do GitHub Release com os 3 artefatos do snapshot.)_
+_(nada — Fase 4 e o Release público estão fechados. Próximo livre: Fase 5 — Retrieval, ou Makefile com target `restore-artifacts` que automatiza o "Caminho 2".)_
 
 ---
 
@@ -26,7 +26,7 @@ _(nada — última fase em andamento foi a Fase 4, fechada. Próximo livre: uplo
   - `manifest.json` — versões + hashes
 - **Restore validado:** drop coleção → upload snapshot via API REST → 14s → 160.267 pontos restaurados → 5 queries dense retornam top-3 coerentes (REN 1000 Art 528 pra "prazo de ligação", NREH pra "TUSD", REN 1000 Art 655-B pra "microgeração", etc).
 - **Bug corrigido durante a execução:** `src/index.py` lia `chunks.jsonl` sem `encoding="utf-8"` — mesmo bug do `chunk.py` (commit `0056f65`), agora também resolvido aqui.
-- **Próximo livre:** upload GitHub Release com os 3 artefatos.
+- **GitHub Release publicada:** `v0.4.0` em https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0 — 3 assets públicos validados (HTTP 200, content-length bate, manifest baixado e parseado OK). Repo agora é público.
 
 ### ✅ Fase 1 — Ingestão (download + análise)
 - 26.731 PDFs baixados (`data/pdfs_aneel/`), 100% text-native

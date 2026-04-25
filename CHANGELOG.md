@@ -7,6 +7,30 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — Publicação do GitHub Release v0.4.0
+
+**Autor:** Mateus (master)
+
+### Added (release pública)
+- Tag `v0.4.0` criada e enviada pro `origin`
+- Release **v0.4.0 — Caminho 2: snapshot pré-indexado** publicada em
+  https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0
+- 3 assets públicos:
+  - `qdrant_snapshot.tar` (1,22 GB) — coleção Qdrant `aneel_chunks` completa
+  - `bm25_index.pkl` (244 MB) — índice BM25 Okapi serializado
+  - `manifest.json` (1,8 KB) — versões + SHA-256 + estatísticas
+- Repo `Mateus-Nery/desafio_nlp` tornado **público** (era privado, releases retornavam 404 sem auth)
+
+### Validação
+- HTTP HEAD em todos os 3 assets retorna 200 OK
+- `manifest.json` baixado direto da URL pública e parseado: `n_chunks=160.267`, `n_docs=26.731`, embedding `BAAI/bge-m3` 1024-dim, Qdrant 1.12.4
+- Content-Length do snapshot (1.221.437.952 B) bate com o local
+
+### Notes
+- README/Makefile ainda não foram atualizados com a URL fixa da v0.4.0 — o README descreve o "Caminho 2" genérico mas referencia `make restore-artifacts` que ainda não existe. Próxima sessão pode (a) adicionar Makefile com o target ou (b) atualizar o README com `curl` direto pra URL exata.
+
+---
+
 ## 2d3df09 — 2026-04-25 — Execução da Fase 4: indexação completa, snapshot, smoke do restore
 
 **Autor:** Mateus (master, RTX 3050 6 GB Laptop)
