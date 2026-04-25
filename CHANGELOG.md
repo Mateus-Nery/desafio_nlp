@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — Atualização da documentação pós-Release v0.4.0 + handoff pra Fase 5
+## a4d91b4 — 2026-04-25 — Atualização da documentação pós-Release v0.4.0 + handoff pra Fase 5
 
 **Autor:** Mateus (master)
 
