@@ -7,6 +7,15 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — README: deixa explícita a autossuficiência do Caminho 2
+
+**Autor:** Pedro (worktree `kind-panini-16a380`)
+
+### Changed
+- `README.md` (seção "Caminho 2 — Bootstrap"): deixa explícito que o examinador NÃO precisa baixar PDFs nem rodar parser/chunker para usar o sistema. Substitui lista plana do snapshot por tabela com obrigatório/opcional, marca `chunks.jsonl` como opcional (só serve para re-indexar). Documenta que o `bge-m3` baixa automaticamente do HuggingFace na primeira query (~2 GB, ~2-3 min uma vez), com comando para pré-baixar. Esclarece que a autossuficiência vem da decisão de design da Fase 4 de armazenar o texto cru no payload do Qdrant.
+
+---
+
 ## 17cca7e — 2026-04-24 — Fase 4: indexação (bge-m3 + Qdrant + BM25)
 
 **Autor:** Pedro (worktree `kind-panini-16a380`)

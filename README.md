@@ -253,24 +253,41 @@ make serve       # Fase 8 — sobe API + UI
 ### Caminho 2 — Bootstrap com snapshot pré-construído ⚡
 
 Pula a parte cara restaurando os artefatos pré-computados publicados como
-GitHub Release.
+GitHub Release. **Esse caminho é autossuficiente** — o examinador *não*
+precisa baixar os 4 GB de PDFs nem rodar parser/chunker. Só Qdrant + BM25
++ código + chave Claude bastam para responder qualquer query.
 
 ```bash
-make restore-artifacts   # baixa qdrant_snapshot.tar + chunks.jsonl + bm25.pkl
+make restore-artifacts   # baixa qdrant_snapshot + bm25_index.pkl
                          # restaura no Qdrant
-                         # ~5 min total
+                         # ~5-10 min total
 make serve               # sobe API + UI
 ```
 
-**O que tem no snapshot:**
+**O que tem no snapshot (Release):**
 
-- `chunks.jsonl` — chunks já parseados (~300 MB)
-- `qdrant_snapshot.tar` — coleção Qdrant com embeddings (~1-2 GB)
-- `bm25_index.pkl` — índice BM25 serializado (~100 MB)
-- `manifest.json` — versões dos modelos + hashes para validação
+| Arquivo | Tamanho | Obrigatório? | Para quê |
+|---|---|---|---|
+| `qdrant_snapshot.tar` | ~1-2 GB | ✅ sim | Coleção Qdrant com vetores dense+sparse e o **texto cru de cada chunk no payload** — não precisa de outro lookup |
+| `bm25_index.pkl` | ~370 MB | ✅ sim | Índice BM25 com payloads mínimos (chunk_id, tipo_ato, year, tier, url) |
+| `chunks.jsonl` | ~342 MB | opcional | Apenas se você quiser **re-indexar** com outro modelo de embedding |
+| `manifest.json` | <1 KB | ✅ sim | Versões dos modelos + hashes para validação |
+
+**Por que isso é autossuficiente:** o `src/index.py` armazena o texto cru
+de cada chunk dentro do payload do Qdrant (e do BM25 pickle). Quando o
+retrieval traz um chunk, ele já vem com `text`, `url`, `tipo_ato`, etc.
+inline — não há lookup posterior em arquivos locais.
+
+**O que ainda precisa baixar automaticamente na primeira query** (uma vez só):
+
+- `BAAI/bge-m3` (~2 GB) do HuggingFace, cacheado em `~/.cache/huggingface/`.
+  Necessário porque o examinador precisa **embedar a query nova** dele com o
+  mesmo modelo usado para indexar. Demora ~2-3 min no primeiro uso, depois
+  é instantâneo. Para acelerar, pode ser pré-baixado com:
+  `python -c "from FlagEmbedding import BGEM3FlagModel; BGEM3FlagModel('BAAI/bge-m3')"`.
 
 Pipeline completo continua existindo e funcionando — snapshot é só atalho.
-Examinador rigoroso pode rodar **Caminho 1** para validar.
+Examinador rigoroso pode rodar **Caminho 1** para validar do zero.
 
 ### Caminho 3 — Smoke test rápido
 
