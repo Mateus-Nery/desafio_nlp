@@ -381,31 +381,197 @@ data/pdfs_aneel/
 
 ---
 
-### Fase 2 — Parser (🔨 próxima)
+### Fase 2 — Parser (✅ concluída)
 
 Módulo: `src/parse_pdfs.py`
 
-Lê todos os PDFs em `data/pdfs_aneel/` e gera `artifacts/parsed.jsonl` com 1
-linha por documento contendo:
+Lê todos os PDFs em `data/pdfs_aneel/` e gera `artifacts/parsed.jsonl` —
+1 linha JSON por documento. Schema:
 
-- `doc_id`, `url`, `tipo_ato`, `ano`, `titulo` (vindos do manifest)
-- `texto_limpo` — texto extraído e normalizado
-- `tabelas` — lista de tabelas convertidas para markdown
-- `n_paginas`, `n_chars`
-- `secoes` — split heurístico em "preâmbulo", "corpo", "anexos"
+```json
+{
+  "doc_id": "2022/ren20221008",
+  "tipo_ato": "ren",
+  "year": 2022,
+  "filename": "ren20221008.pdf",
+  "title": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.008, DE 15 DE MARÇO DE 2022",
+  "ementa": "Dispõe sobre a Conta Escassez Hídrica...",
+  "processo": "48500.006312/2021-55",
+  "n_pages": 22, "n_chars": 12090, "n_tokens_est": 3267,
+  "is_ocr_suspect": false,
+  "pdf_creator": "Microsoft® Word para Microsoft 365",
+  "text": "...full cleaned text...",
+  "structure": [
+    {"type": "capitulo", "label": "CAPÍTULO I",
+     "title": "DISPOSIÇÕES PRELIMINARES",
+     "start": 762, "end": 1313, "parent": ""},
+    {"type": "artigo", "label": "Art. 1º",
+     "start": 798, "end": 1313, "parent": ""},
+    {"type": "paragrafo", "label": "§ 1º",
+     "start": 891, "end": 950, "parent": "Art. 1º"}
+  ],
+  "tables": [{"id": "p2t1", "page": 2,
+              "markdown": "| col1 | col2 |...",
+              "rows": 7, "cols": 4}],
+  "footnotes": [{"num": 1, "text": "Documento SIC nº ..."}]
+}
+```
 
-**Pré-processamento universal:**
+#### Pipeline de cleaning
 
-1. Strip de headers recorrentes:
-   - `* A Nota Técnica é um documento emitido...`
-   - `FL. X de Y` (numeração de página)
-   - Cabeçalho ANEEL recorrente
-2. Colapso de quebras de linha intra-parágrafo (preserva quebras de seção)
-3. Reconstituição de hifens em fim de linha
-4. Normalização de espaços e caracteres unicode
+```
+PDF
+ │
+ ├─► page.get_text("blocks", sort=True)   ← robusto a multi-coluna (33% do corpus)
+ │
+ ├─► page.find_tables() + heurística      ← descarta tabelas de coordenadas
+ │   semântica (≥70% numérico)              UTM/CEG, mantém tabelas de prosa
+ │
+ ├─► detect_repeated_lines (≥3 págs)       ← header/footer dinâmico por doc
+ │
+ ├─► remove_boilerplate (regex hardcoded)
+ │     • "AGÊNCIA NACIONAL DE ENERGIA ELÉTRICA – ANEEL" (linha solta)
+ │     • "P. X Nota Técnica nº ..." / "Fl. X Nota Técnica nº ..."
+ │     • "* A Nota Técnica é um documento emitido pelas Unidades..."
+ │     • Linhas de underscores (divisores visuais)
+ │     • "Este texto não substitui o publicado no Boletim Administrativo..."
+ │     • "Retificado no D.O. de ..." / "(Tornada sem efeito pela...)"
+ │     • Carimbos isolados de superintendência
+ │
+ ├─► fix_line_hyphenation                  ← só junta letra-letra
+ │     "autori-\nzação" → "autorização"      (preserva "2021-\n55")
+ │
+ ├─► join_lone_paragraph_numbers           ← Voto/Nota: "12.\ntexto" → "12. texto"
+ │
+ ├─► extract_footnotes                     ← rodapés "1 Documento SIC nº ..."
+ │   (saem do texto principal e vão               viram footnotes[]
+ │    para campo separado)
+ │
+ ├─► normalize_chars                       ← NFC, NBSP→space, aspas curvas→retas
+ │
+ └─► collapse_blank_lines                  ← \n\n\n+ → \n\n
+                                              espaços múltiplos → 1
+```
 
-**Tabelas** (~5% do corpus, NDSP/NREH/REH): `page.find_tables()` →
-serialização em markdown antes do chunking, evita células viraram lixo.
+#### Extração estrutural (`structure[]`)
+
+Regex captura os marcadores e calcula offsets `(start, end)` dentro do
+`text` final. Hierarquia: **Anexo > Capítulo > Seção > Artigo > §**. Cada
+nó conhece seu parent (ex.: `§ 1º` → `parent: "Art. 1º"`).
+
+| Tipo       | Regex                                               | Exemplo                  |
+| ---------- | --------------------------------------------------- | ------------------------ |
+| capitulo   | `^CAP[ÍI]TULO [IVXLCDM]+ – TÍTULO`                  | `CAPÍTULO I - DISPOSIÇÕES` |
+| artigo     | `^Art\. \d+[ºo°]?`                                  | `Art. 12.`               |
+| paragrafo  | `^§ \d+[ºo°]? \| Parágrafo único`                   | `§ 2º`, `Parágrafo único`|
+| anexo      | `^ANEXO( [IVXLCDM]+)?`                              | `ANEXO I`                |
+| quadro     | `^Quadro \d+`                                       | `Quadro 2 – Informações` |
+| tabela     | `^Tabela \d+`                                       | `Tabela 1: Usinas`       |
+
+Esse índice é o que vai habilitar o **chunking Tier A** (Art./Anexo/§) na
+Fase 3 — sem precisar reparsing.
+
+#### Decisões de design (gravitando para qualidade)
+
+| Decisão                | Escolha                | Motivo                                                |
+| ---------------------- | ---------------------- | ----------------------------------------------------- |
+| Footnotes              | campo separado          | mantém texto principal limpo, ainda permite citar     |
+| Tabelas                | só semânticas (Markdown)| descarta coordenadas UTM/listas de CEG (não-recuperáveis) |
+| Multi-coluna           | sempre `blocks`+sort    | robusto, custa pouco                                  |
+| Headers/footers        | regex + heurística repetição | combina precisão (regex) com cobertura (heurística) |
+| Hifenização            | só letra-letra          | preserva IDs (`2021-55`), datas, códigos              |
+| Numeração solta        | join com próxima linha não-vazia | resolve `1.\nresolve:` em Votos/Notas        |
+| Workers                | `mp.cpu_count() - 1`    | paraleliza por documento (sem GIL)                    |
+| Retomada               | `--resume` + dedup pelo `doc_id` | idempotente em re-runs                       |
+
+#### Comando
+
+```bash
+# Corpus completo (~26.7k PDFs, ~30-60 min com 8 cores)
+python -m src.parse_pdfs \
+  --pdfs-root data/pdfs_aneel \
+  --out artifacts/parsed.jsonl \
+  --workers 8
+
+# Smoke test nas 8 amostras de explore_pdfs.py
+python -m src.parse_pdfs --samples-only \
+  --out artifacts/parsed_samples.jsonl --workers 1
+
+# Retomar interrompido
+python -m src.parse_pdfs --resume \
+  --out artifacts/parsed.jsonl --workers 8
+```
+
+#### Validação nas amostras
+
+8/8 amostras processadas em 12.6s (1.6s/doc com 1 worker). Validação manual:
+
+| Doc                       | Title extraído              | Processo extraído     | Struct | Tables | Footnotes |
+| ------------------------- | --------------------------- | --------------------- | ------ | ------ | --------- |
+| `ren20221008` (RES Norm)  | ✅ `RESOLUÇÃO NORMATIVA ANEEL Nº 1.008...` | ✅ `48500.006312/2021-55` | 92     | 3      | 0         |
+| `reh20223008ti` (RES Hom) | ✅ `RESOLUÇÃO HOMOLOGATÓRIA Nº 3.008...`   | ✅ `48500.004911/2021-34` | 20     | 5      | 0         |
+| `rea20165599ti` (RES Aut) | ✅ `RESOLUÇÃO AUTORIZATIVA Nº 5.599...`    | ✅ `48500.000939/2014-73` | 7      | 0      | 0         |
+| `prt20153774` (Portaria)  | ✅ `PORTARIA N° 3.774...`                  | ✅ `48500.005223/2015-43` | 2      | 0      | 0         |
+| `dsp2022021spde` (Despacho) | ✅ `DESPACHO DECISÓRIO Nº 21/2022/SPE`   | ✅ `48000.001295/1992-12` | 1      | 3      | 0         |
+| `ndsp2022060` (Nota Téc)  | ✅ `Nota Técnica nº 01/2022-SGT/ANEEL`     | ✅ `48500.006465/2021-01` | 8      | 126    | 3         |
+| `nreh20162014` (Nota Téc) | ✅ `Nota Técnica n° 004/2016-SGT-SRM/ANEEL`| ✅ `48500.000315/2015-37` | 7      | 9      | 2         |
+| `area202210992_1` (Voto)  | ✅ `VOTO`                                  | ✅ `48500.003989/2012-41` | 5      | 2      | 4         |
+
+**Cleaning verificado** em ndsp2022060 (128 págs):
+- 0 ocorrências de footnote boilerplate
+- 0 ocorrências de "P. X Nota Técnica" headers de página
+- 0 divisores `_____`
+- 1 ocorrência residual de "AGÊNCIA NACIONAL..." (legítima, no corpo)
+- 3/3 footnotes extraídas para campo separado
+
+#### Resultados — corpus completo (n=26.731)
+
+Execução em 8 workers (cores), 1.780s = 29.7 min, **15.0 doc/s**, **0 falhas**.
+
+| Métrica                  | Valor             |
+| ------------------------ | ----------------- |
+| Docs processados         | 26.731 / 26.731 (**100%**) |
+| Falhas                   | 0                 |
+| Total chars              | 201,3 M           |
+| Tokens estimados         | 54,4 M            |
+| OCR-suspect              | 7 (0,03%)         |
+| Texto vazio (<100 chars) | 7 (0,03%)         |
+| Tabelas extraídas        | 39.390            |
+| Footnotes extraídas      | 8.274             |
+| Struct nodes médio       | 4,1 / doc         |
+| Tamanho `parsed.jsonl`   | 275 MB            |
+
+**Title extraction rate por tipo (atos principais):**
+
+| Tipo  | N total | Com title  | Taxa    |
+| ----- | ------- | ---------- | ------- |
+| `ren` | 154     | 154        | **100,0%** |
+| `rea` | 3.894   | 3.894      | **100,0%** |
+| `reh` | 474     | 474        | **100,0%** |
+| `prt` | 3.174   | 3.167      | 99,8%   |
+| `ndsp`| 478     | 476        | 99,6%   |
+| `dsp` | 9.932   | 9.844      | 99,1%   |
+| `nreh`| 224     | 221        | 98,7%   |
+| `aprt`| 562     | 553        | 98,4%   |
+| `area`| 3.919   | 3.836      | 97,9%   |
+| `areh`| 475     | 463        | 97,5%   |
+| `adsp`| 2.098   | 1.856      | 88,5%   |
+| `aren`| 205     | 178        | 86,8%   |
+
+Tipos com taxa baixa (`ect`=2%, `acp`=20%, `aap`=12%) são **extratos** e
+**comunicados** que **não têm cabeçalho formal** — comportamento esperado,
+não é bug. Esses tipos representam < 3% do corpus.
+
+**Processo extraction rate**: ≥95% para `rea`/`reh`/`prt`, ≥89% para
+`dsp`/`adsp`/`ndsp`/`aprt`, com média geral de ~88%.
+
+#### Saídas
+
+```
+artifacts/
+├── parsed.jsonl          # 1 linha por doc, 26.731 linhas, 275 MB
+└── parse.log             # logs de execução, throughput, falhas
+```
 
 ---
 
