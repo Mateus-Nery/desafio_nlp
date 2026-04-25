@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — README: deixa explícita a autossuficiência do Caminho 2
+## 74fd136 — 2026-04-24 — README: deixa explícita a autossuficiência do Caminho 2
 
 **Autor:** Pedro (worktree `kind-panini-16a380`)
 
