@@ -7,6 +7,42 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## d1d1fb9 / d68f3ef — 2026-04-24 — Merges para master (Fase 2 + Fase 3)
+
+**Autor:** Pedro
+
+### Notes
+- Merge `--no-ff` dos branches `claude/naughty-tu-6a7a33` (parser) e `claude/kind-panini-16a380` (chunker + protocolo) em `master`. Sem conflitos.
+
+---
+
+## d25643b — 2026-04-24 — Resultados finais do parser no corpus completo
+
+**Autor:** Pedro (worktree `naughty-tu-6a7a33`, com Claude Opus 4.7)
+
+### Added (docs)
+- README com stats finais da Fase 2: 26.731/26.731 docs (100%), 0 falhas, 29,7 min (15 doc/s)
+- 201,3 M chars, 54,4 M tokens estimados, 39.390 tabelas, 8.274 footnotes
+- Taxas de extração de título: 100% REN/REA/REH, 99%+ PRT/NDSP/DSP
+
+---
+
+## bf9209e — 2026-04-24 — Fase 2: parser PDF→parsed.jsonl com extração estrutural
+
+**Autor:** Pedro (worktree `naughty-tu-6a7a33`, com Claude Opus 4.7)
+
+### Added
+- `src/parse_pdfs.py` — pipeline completo PyMuPDF para os ~26.7k PDFs:
+  - blocks-sort para multi-coluna (33% do corpus)
+  - `find_tables()` com filtro semântico (descarta UTM/CEG)
+  - `detect_repeated_lines` (≥3 págs) + regex hardcoded para boilerplate ANEEL
+  - `fix_line_hyphenation` letra-letra (preserva IDs/datas)
+  - `extract_footnotes` em campo separado, normalize NFC, collapse blank lines
+- `scripts/explore_pdfs.py` — gera amostras dos 8 tipos principais em `explore_output/`
+- Schema `parsed.jsonl`: doc_id, tipo_ato, year, title, ementa, processo, n_pages, n_chars, n_tokens_est, is_ocr_suspect, pdf_creator, text, structure[] (capitulo/artigo/paragrafo/anexo com offsets+parent), tables[] (Markdown), footnotes[]
+
+---
+
 ## 6dd84fa — 2026-04-24 — Fase 3: chunker 3-tier
 
 **Autor:** Pedro (worktree `kind-panini-16a380`)

@@ -10,20 +10,29 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-### 🏃 Fase 2 — Parser PyMuPDF
-- **Worktree:** `naughty-tu-6a7a33`
-- **Owner:** @amigo
-- **Comando:** `python -m src.parse_pdfs --pdfs-root data/pdfs_aneel --out artifacts/parsed.jsonl --workers 8`
-- **Status:** 16.471 / 26.731 docs (62%), ~14 min restantes (estimativa em 2026-04-24 ~22:00)
-- **Output:** `artifacts/parsed.jsonl` (~26k linhas quando concluído)
-- **Erros conhecidos:** warnings cosméticos `MuPDF error: format error: No common ancestor in structure tree` — ignoráveis, fail=0
+_(nada em execução — Fase 2 e Fase 3 mergeadas em master)_
 
-### 🔨 Fase 3 — Chunker (código pronto, esperando input completo)
-- **Worktree:** `kind-panini-16a380`
-- **Owner:** @pedro
-- **Status:** `src/chunk.py` implementado e validado em smoke (7k docs parciais → 39.682 chunks)
-- **Próximo passo:** assim que Fase 2 terminar, rodar `python -m src.chunk --in artifacts/parsed.jsonl --out artifacts/chunks.jsonl`
-- **Bloqueador:** depende de `parsed.jsonl` completo
+---
+
+## Fases concluídas (no master)
+
+### ✅ Fase 1 — Ingestão (download + análise)
+- 26.731 PDFs baixados (`data/pdfs_aneel/`), 100% text-native
+- Commits: `7f967a9`, `555373c`, `4bfb66e`
+
+### ✅ Fase 2 — Parser
+- **Owner:** @amigo (worktree `naughty-tu-6a7a33`)
+- 26.731/26.731 docs parseados em 29,7 min, 0 falhas
+- 54,4 M tokens, 39.390 tabelas, 8.274 footnotes
+- Output esperado: `artifacts/parsed.jsonl` (NOTA: arquivo é gerado localmente, não está no git)
+- Commits: `bf9209e`, `d25643b`
+
+### ✅ Fase 3 — Chunker (código pronto)
+- **Owner:** @pedro (worktree `kind-panini-16a380`)
+- `src/chunk.py` 3-tier data-driven com hard cap 1500 tok
+- Validado em smoke (7k docs parciais → 39.682 chunks, 0 dups)
+- **Próximo passo:** rodar contra `parsed.jsonl` completo: `python -m src.chunk --in artifacts/parsed.jsonl --out artifacts/chunks.jsonl`
+- Commits: `6dd84fa`, `11581e5`, `3d5e2c0`
 
 ---
 
