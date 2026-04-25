@@ -7,6 +7,36 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## 17cca7e — 2026-04-24 — Fase 4: indexação (bge-m3 + Qdrant + BM25)
+
+**Autor:** Pedro (worktree `kind-panini-16a380`)
+
+### Added
+- `src/index.py` — pipeline de indexação:
+  - BM25 (`rank_bm25.BM25Okapi`) com tokenizer `\w+` lowercase, sem stopwords (texto jurídico precisa dos conectores; IDF cuida)
+  - Dense + sparse via `FlagEmbedding.BGEM3FlagModel` num único forward (1024-dim cosine + lexical_weights)
+  - Qdrant com named vectors (`dense` + `sparse`), payload indexes em `tipo_ato`, `year`, `tier`, `doc_id`
+  - Autodetect device: CUDA → MPS (Apple) → CPU; fp16 quando não-CPU
+  - Idempotência via UUID determinístico do `chunk_id` (uuid5)
+- `docker-compose.yml` — Qdrant 1.12.4 com volume persistente, ports 6333/6334
+- `requirements.txt` atualizado: FlagEmbedding, qdrant-client, rank_bm25, torch, anthropic, ragas, fastapi, streamlit
+- CLI flags: `--skip-bm25`, `--skip-dense`, `--limit`, `--batch-size`
+
+### Notes
+- BM25 validado em smoke (1k chunks → 2.3MB pickle); query "tarifa de uso..." retorna top-3 coerentes
+- Indexação dense pendente de execução (precisa Qdrant up + ~30-60min em GPU para 160k chunks)
+
+---
+
+## a71adf8 — 2026-04-24 — Remove `contexto_download_pdfs_aneel.md` obsoleto
+
+**Autor:** Mateus (worktree `objective-blackburn-7f6ac0`)
+
+### Removed
+- `contexto_download_pdfs_aneel.md` — briefing pré-implementação da Fase 1, hoje redundante com o README e desatualizado em pontos críticos: stack HTTP (`httpx` vs `curl_cffi` real), 403 (listava como não-retryable, mas é transiente do Cloudflare), volume (~18.688 estimado vs 26.731 real) e estratégia geral (e5-large/BERTimbau/Estratégia B vs bge-m3/RRF/bge-reranker-v2). Conteúdo histórico fica preservado no git log do `7f967a9`.
+
+---
+
 ## d1d1fb9 / d68f3ef — 2026-04-24 — Merges para master (Fase 2 + Fase 3)
 
 **Autor:** Pedro
