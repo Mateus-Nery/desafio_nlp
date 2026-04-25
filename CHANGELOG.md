@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — Publicação do GitHub Release v0.4.0
+## a357547 — 2026-04-25 — Publicação do GitHub Release v0.4.0
 
 **Autor:** Mateus (master)
 
