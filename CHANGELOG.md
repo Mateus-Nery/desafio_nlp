@@ -7,6 +7,15 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — 2026-04-24 — Remove `contexto_download_pdfs_aneel.md` obsoleto
+
+**Autor:** Mateus (worktree `objective-blackburn-7f6ac0`)
+
+### Removed
+- `contexto_download_pdfs_aneel.md` — briefing pré-implementação da Fase 1, hoje redundante com o README e desatualizado em pontos críticos: stack HTTP (`httpx` vs `curl_cffi` real), 403 (listava como não-retryable, mas é transiente do Cloudflare), volume (~18.688 estimado vs 26.731 real) e estratégia geral (e5-large/BERTimbau/Estratégia B vs bge-m3/RRF/bge-reranker-v2). Conteúdo histórico fica preservado no git log do `7f967a9`.
+
+---
+
 ## d1d1fb9 / d68f3ef — 2026-04-24 — Merges para master (Fase 2 + Fase 3)
 
 **Autor:** Pedro
