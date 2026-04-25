@@ -1,9 +1,30 @@
+# Python
 .venv/
-venv
-
+venv/
 .__pycache__
-__pycache__
+__pycache__/
+*.pyc
+*.pyo
 
-dados_grupo_estudos
+# OS
+.DS_Store
 
-pdfs_aneel
+# Editor
+.vscode/
+.idea/
+
+# Environment
+.env
+
+# Data (não versionado — regerável via pipeline)
+data/dados_grupo_estudos/
+data/pdfs_aneel/
+
+# Artefatos gerados (publicados via GitHub Release)
+artifacts/
+
+# Logs runtime
+*.log
+
+# Claude Code workspace
+.claude/
