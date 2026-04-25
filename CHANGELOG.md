@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — Fase 3: chunker 3-tier
+## 6dd84fa — 2026-04-24 — Fase 3: chunker 3-tier
 
 **Autor:** Pedro (worktree `kind-panini-16a380`)
 
@@ -23,6 +23,17 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 ### Notes
 - Validado em smoke (7000 docs do `parsed.jsonl` parcial): 39.682 chunks, 0 duplicados, p50=404 tok, max=1546 tok
 - Aguardando Fase 2 (parser, em execução no worktree `naughty-tu-6a7a33`) terminar para rodar contra os 26.731 docs completos
+
+---
+
+## 11581e5 — 2026-04-24 — Protocolo de coordenação entre colaboradores
+
+**Autor:** Pedro (worktree `kind-panini-16a380`)
+
+### Added
+- `CLAUDE.md` — instruções obrigatórias para Claude (e humanos): ordem de leitura ao iniciar sessão (HANDOFF → CHANGELOG → git log), regras antes/depois de commit, convenções acordadas
+- `CHANGELOG.md` — histórico append-only de mudanças (este arquivo)
+- `HANDOFF.md` — estado VIVO do trabalho em andamento: owners por fase, decisões em aberto, bloqueadores
 
 ---
 
