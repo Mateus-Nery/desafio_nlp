@@ -1,0 +1,9 @@
+{
+  "n_questions": 79,
+  "n_evaluated": 79,
+  "hit@5": 0.7101,
+  "hit@10": 0.7246,
+  "hit@20": 0.8116,
+  "mrr": 0.619,
+  "n_retrieval_eval": 69
+}

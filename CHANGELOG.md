@@ -7,6 +7,30 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — 2026-04-26 — Fase 7: avaliação end-to-end + métricas retrieval
+
+**Autor:** Mateus (master)
+
+### Added
+- `eval/evaluate.py` — script de avaliação end-to-end:
+  - **Retrieval** (todos os tipos exceto `negative`): hit@5/10/20, MRR
+  - **Geração** (`--with-generation`): p50/p95 latência, not_found rate em questões negativas
+  - **LLM eval** (faithfulness + answer_relevance via claude-haiku-4-5, sem Ragas)
+  - CLI: `python -m eval.evaluate [--with-generation] [--gen-limit N] [--no-rerank]`
+- `eval/eval_results.jsonl` — resultado por questão (retrieval em todas as 79)
+- `eval/eval_summary.json` — sumário agregado
+
+### Changed
+- `requirements.txt` — adiciona `langchain-anthropic>=1.4` (dep da integração Ragas, mantida para compatibilidade futura)
+- `eval/generate_golden_set.py` — fix loader `.env`: sobrescreve variáveis vazias do ambiente (ANTHROPIC_API_KEY vazio no Windows)
+
+### Notes
+- **Resultados retrieval (79q, top-20, com reranker, RTX 3050):**
+  - hit@5 = 0.7101 | hit@10 = 0.7246 | hit@20 = 0.8116 | MRR = 0.619
+- Geração + LLM eval pausados (créditos API esgotados); rodar `--with-generation` quando recarregar
+
+---
+
 ## 4e4c097 — 2026-04-26 — Fase 7: golden set (79 questões para avaliação RAG)
 
 **Autor:** Mateus (master)

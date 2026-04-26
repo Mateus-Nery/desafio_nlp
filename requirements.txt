@@ -22,6 +22,7 @@ anthropic>=0.40
 
 # Fase 7 — Avaliação
 ragas>=0.2
+langchain-anthropic>=1.4    # LLM wrapper do Ragas para métricas faithfulness/relevancy
 
 # Fase 8 — Serving (opcional)
 fastapi>=0.115
