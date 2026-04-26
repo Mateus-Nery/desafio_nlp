@@ -783,30 +783,94 @@ Sem tunar pesos, robusto.
 
 ---
 
-### Fase 6 — Geração (📋 planejada)
+### Fase 6 — Geração (✅ concluída)
 
 Módulo: `src/generate.py`
 
-- **LLM:** Claude Sonnet 4.6 (`claude-sonnet-4-6`) via Anthropic API
-- **Prompt:** enforça citação por chunk (URL + tipo_ato + número/ano +
-  artigo quando aplicável)
-- **Output JSON:**
+Recebe a lista de `Hit` da Fase 5 e gera uma resposta fundamentada via
+**Claude Sonnet 4.6**, com citações obrigatórias inline `[N]`.
+
+#### Pipeline
+
+```
+query + top-K Hits
+  │
+  ├─ build_context_block()
+  │    numera cada chunk [1]…[K] com metadados (tipo, ano, seção, URL)
+  │
+  ├─ system prompt (cache_control="ephemeral" → prompt caching sempre ativo)
+  │    • responde APENAS pelos trechos fornecidos
+  │    • cita obrigatoriamente com [N] inline
+  │    • resposta em PT-BR
+  │    • fallback sem alucinação: "Não encontrei informação suficiente…"
+  │
+  ├─ Claude Sonnet 4.6  (streaming no CLI, batch para Ragas)
+  │
+  └─ extrai [N] citados programaticamente → monta citations[]
+```
+
+#### Schema de saída `GenerationResult`
 
 ```json
 {
-  "answer": "Conforme o art. 23 da REN 1.000/2021...",
-  "sources": [
+  "answer": "A TUSD é calculada conforme os Procedimentos de Distribuição [1]. No caso de autoprodução, aplica-se desconto de 50% [2].",
+  "citations": [
     {
-      "chunk_id": "ren2021001000__art23",
-      "tipo_ato": "REN",
-      "numero": "1000/2021",
-      "art": "23",
-      "url": "https://...",
-      "trecho_relevante": "..."
+      "n": 1,
+      "chunk_id": "2022/ren20221000__art5",
+      "url": "https://www2.aneel.gov.br/cedoc/ren20221000.pdf",
+      "tipo_ato": "ren",
+      "title": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.000",
+      "section": "Art. 5º"
+    },
+    {
+      "n": 2,
+      "chunk_id": "2022/reh20223000__art2",
+      "url": "https://www2.aneel.gov.br/cedoc/reh20223000.pdf",
+      "tipo_ato": "reh",
+      "title": "RESOLUÇÃO HOMOLOGATÓRIA Nº 3.000",
+      "section": "Art. 2º"
     }
   ],
-  "confidence": "high"
+  "query": "o que é TUSD e como é calculada?",
+  "n_chunks": 10,
+  "model": "claude-sonnet-4-6",
+  "input_tokens": 4280,
+  "output_tokens": 310,
+  "cache_read_tokens": 312,
+  "latency_ms": 2100,
+  "not_found": false
 }
+```
+
+#### Decisões de design
+
+| Decisão | Escolha | Motivo |
+|---|---|---|
+| Prompt caching | `cache_control="ephemeral"` no system | Reutiliza cache em chamadas consecutivas, reduz latência e custo |
+| Anti-alucinação | Regra explícita no system + fallback padronizado | LLM não pode inventar; resposta fora do contexto dispara sinal fixo |
+| Citations | Inline `[N]` extraídas por regex do texto gerado | Formato limpo para o usuário; `citations[]` estruturado para Ragas |
+| Streaming | Ativado por padrão no CLI | Feedback imediato; desativável com `--no-stream` ou `--json` |
+| Interface Python | `generate(query, hits, client)` → `GenerationResult` | Reutilizável pela Fase 7 (Ragas) sem overhead de CLI |
+
+#### Comandos
+
+```bash
+# Pré-requisito: .env com ANTHROPIC_API_KEY
+cp .env.example .env  # editar e preencher a chave
+
+# Query interativa (streaming)
+make generate QUERY="o que é TUSD e como ela é calculada?"
+
+# Passando filtros
+python -m src.generate \
+  --query "prazo para ligação nova de baixa tensão" \
+  --tipo-ato ren --year 2022 --top-k 8
+
+# Saída JSON (para integração / Ragas)
+python -m src.generate \
+  --query "o que é microgeração distribuída?" \
+  --json --no-stream > result.json
 ```
 
 ---
