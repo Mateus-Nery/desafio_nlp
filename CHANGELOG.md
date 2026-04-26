@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-26 — Infraestrutura de variáveis de ambiente + início Fase 7
+## c02e759 — 2026-04-26 — Infraestrutura de variáveis de ambiente + início Fase 7
 
 **Autor:** Mateus (master)
 
