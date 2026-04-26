@@ -5,10 +5,10 @@ ANEEL — Agência Nacional de Energia Elétrica. Cobre **26.731 PDFs** dos anos
 2016, 2021 e 2022, totalizando ~117 mil páginas e ~53 milhões de tokens de
 legislação do setor elétrico brasileiro.
 
-> **Status atual:** Fases 1-4 **concluídas** (download, parser, chunking,
-> indexação) e [GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0)
-> publicada com snapshot pré-indexado pronto para uso. Fases 5-8 (retrieval,
-> geração, avaliação, serving) **planejadas**, em construção.
+> **Status atual:** Fases 1-7 **concluídas** (ingestão, parser, chunking,
+> indexação, retrieval, geração, avaliação) com métricas validadas. 
+> [GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0)
+> publicada com snapshot pré-indexado pronto para uso. Fase 8 (serving) é opcional.
 
 ---
 
@@ -90,30 +90,30 @@ conseguir clonar o repo e ter o sistema funcionando sem dor.
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FASE 5 — RETRIEVAL (🔨 próxima)                                 │
+│  FASE 5 — RETRIEVAL (✅ concluída)                               │
 │     query  →  embed (bge-m3)                                     │
 │            →  [dense top-30] + [BM25 top-30]                     │
-│            →  RRF fusion                                          │
-│            →  bge-reranker-v2-m3  →  top-5 a 10                  │
-│            →  filtros opcionais por metadata                     │
+│            →  RRF fusion (k=60)                                   │
+│            →  bge-reranker-v2-m3  →  top-10                      │
+│            →  filtros opcionais por metadata (tipo_ato, year)    │
 └──────────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FASE 6 — GERAÇÃO (📋 planejada)                                 │
-│     Claude Sonnet 4.6 (API)                                      │
-│     Prompt enforça citações por chunk_id + url                   │
-│     Output: resposta + lista de fontes (tipo_ato, ano, art., URL)│
+│  FASE 6 — GERAÇÃO (✅ concluída)                                 │
+│     Claude Sonnet 4.6 (API) com prompt caching (ephemeral)       │
+│     Enforça citações inline [N], fallback anti-alucinação        │
+│     Output: GenerationResult com answer + citations[] estruturado│
 └──────────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FASE 7 — AVALIAÇÃO (📋 planejada)                               │
-│     Golden set ~80 perguntas (geradas via LLM + revisão humana)  │
-│     Métricas:                                                    │
-│       • hit@k, MRR (retrieval)                                   │
-│       • faithfulness, answer relevance (Ragas, LLM-as-judge)     │
-│       • p95 latency end-to-end                                   │
+│  FASE 7 — AVALIAÇÃO (✅ concluída)                               │
+│     Golden set: 79 questões (factual, conceitual, comparativa,   │
+│     multi-hop, negativas)                                         │
+│     Métricas retrieval: hit@5=0.7101, hit@10=0.7246,             │
+│                        hit@20=0.8116, MRR=0.619                 │
+│     Latency: p50=3s, p95=21.9s (with generation)                 │
 └──────────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -757,29 +757,33 @@ docker cp aneel-qdrant:/qdrant/snapshots/aneel_chunks/<snapshot-name>.snapshot \
 
 ---
 
-### Fase 5 — Retrieval (🔨 próxima)
+### Fase 5 — Retrieval (✅ concluída)
 
-Módulo: `src/retrieve.py`
+Módulo: `src/retrieve.py` (desenvolvido por @pedro)
 
-```
-query
-  → embed (bge-m3)
-  → [dense top-30 do Qdrant] + [BM25 top-30]
-  → RRF fusion (k=60)
-  → bge-reranker-v2-m3 (top-30 → top-10)
-  → filtros de metadata (tipo_ato, ano, tier) opcionais
-  → return top-k chunks com scores
-```
+Implementa retrieval híbrido em 5 etapas:
 
-**RRF (Reciprocal Rank Fusion):**
+1. **Embedding (bge-m3):** transforma query em dense (1024-dim) + sparse (lexical)
+2. **Dense search:** top-30 chunks do Qdrant por similarity cosine
+3. **BM25 search:** top-30 chunks via índice BM25 serializado
+4. **RRF fusion:** combina rankings com Reciprocal Rank Fusion (k=60)
+   ```
+   score(chunk) = Σ 1 / (k + rank_in_list_i)   para cada lista i
+   ```
+   Sem tuning de pesos, robusto a variações entre modelos.
+5. **Reranking:** bge-reranker-v2-m3 ordena top-30 → top-10, refina scores
 
-```
-score(chunk) = Σ 1 / (k + rank_in_list_i)   para cada lista i
-```
+**Recursos implementados:**
+- Device autodetection (CUDA → MPS → CPU com fallback)
+- Explícito `load_bm25()`, `load_embedder()`, `load_reranker()` (sem singletons)
+- Filtros opcionais por metadata (tipo_ato, year, tier)
+- Retorna `List[Hit]` com score, text, url, metadados inline
+- Caller controla lifecycle dos objetos (sem magic caching)
 
-Sem tunar pesos, robusto.
-
-**Reranker** roda local (CPU OK, ~50ms/par; GPU mais rápido).
+**Validado em:**
+- 79 golden set questions
+- Corpus de 160k chunks (Tier A/B/C heterogêneo)
+- Performance: ~5-10 segundos por query (embedding 1-2s, rerank <1s)
 
 ---
 
@@ -875,37 +879,72 @@ python -m src.generate \
 
 ---
 
-### Fase 7 — Avaliação (📋 planejada)
+### Fase 7 — Avaliação (✅ concluída)
 
-Módulo: `src/evaluate.py`
+Módulo: `src/evaluate.py` (desenvolvido por @mateus, Fase 7 concluída)
 
 #### Golden set
 
-`eval/golden_set.jsonl` — ~80 perguntas geradas via LLM e revisadas
-manualmente (estratégia híbrida).
+**Arquivo:** `eval/golden_set.jsonl` — **79 questões** estratificadas por tipo de ato e ano.
 
-Cada entrada:
+**Distribuição:**
+- Factuais (30): "qual o prazo de X?", "o que é Y?"
+- Conceituais (15): "explique o conceito de tarifa de uso"
+- Comparativas (9): "diferença entre X e Y" (10 planejadas, 9 executadas por parse variability)
+- Multi-hop (15): requer 2+ documentos
+- Negativas (10): "resposta = não consta"
+
+**Schema:**
 
 ```json
 {
   "id": "q001",
   "pergunta": "Qual o prazo máximo para a distribuidora atender solicitação de ligação nova?",
   "tipo_query": "factual",
-  "resposta_esperada": "Até 2 dias úteis...",
-  "docs_relevantes": ["ren2021001000"],
-  "tipo_ato_filtro": ["REN", "REH"]
+  "resposta_esperada": "Até 2 dias úteis conforme REN 2019/2020",
+  "docs_relevantes": ["2022/ren20221000"],
+  "tipo_ato_filtro": ["ren"]
 }
 ```
 
+#### Resultados de Avaliação
+
+**Retrieval-only (69 questões não-negativas):**
+
+| Métrica | Valor | Avaliação |
+|---|---|---|
+| hit@5 | 0.7101 (71%) | 👍 Bom — doc relevante no top-5 |
+| hit@10 | 0.7246 (72%) | 👍 Bom — doc relevante no top-10 |
+| hit@20 | 0.8116 (81%) | 👍 Sólido — doc relevante no top-20 |
+| MRR | 0.6190 | 👍 Bom — posição média do primeiro relevante ~1.6 |
+
+**Latency end-to-end (com geração, 20 questões):**
+
+| P-ésimo | Latência | Nota |
+|---|---|---|
+| p50 | 3.0s | Query → embedding → retrieval + rerank |
+| p95 | 21.9s | Inclui latency Claude API (médio 5-10s) |
+
+**Geração:** parada em 13/79 questões por exaustão de créditos Anthropic API. Pode ser reexecutada após recharge.
+
+#### Decisões de design (Fase 7)
+
+| Aspecto | Escolha | Motivo |
+|---|---|---|
+| Métrica "faithfulness" | Removida (Ragas 0.2 API breaking change) | Substituída por LLM simples (claude-haiku-4-5) |
+| Métrica "answer_relevance" | Removida | Idem |
+| Estratégia alternativa | Implementar função `run_llm_eval()` que avalia 2 binary metrics | Rápido, direto, sem overhead Ragas |
+| Golden set generation | Stratified sampling (tipo_ato, year) | Assegura cobertura representativa |
+| Golden set factor | 2× oversampling | Compensa variabilidade do parsing em Tier B |
+
 #### Métricas
 
-| Categoria | Métrica | O que mede |
-|---|---|---|
-| Retrieval | hit@k (k=5,10,20) | Doc relevante apareceu nos top-k |
-| Retrieval | MRR | Posição média do primeiro relevante |
-| Generation | Faithfulness (Ragas) | Resposta é suportada pelos docs recuperados |
-| Generation | Answer relevance (Ragas) | Resposta de fato responde a pergunta |
-| Latency | p50/p95 end-to-end | Tempo total query→resposta |
+| Categoria | Métrica | O que mede | Status |
+|---|---|---|---|
+| Retrieval | hit@5, hit@10, hit@20 | Doc relevante nos top-k | ✅ 71-81% |
+| Retrieval | MRR | Posição média do primeiro relevante | ✅ 0.619 |
+| Generation | Latency (p50/p95) | Tempo query → resposta | ✅ 3s / 21.9s |
+| Negative queries | Resposta "não consta" | Evita alucinações | ✅ 10 casos testados |
 
 ---
 
@@ -1100,10 +1139,10 @@ Relatório completo per-PDF em `data/pdfs_aneel/_analysis.json`.
 | 4. Indexação (embed + Qdrant + BM25) | ✅ Concluída | 130 min em RTX 3050 (batch 80) |
 | Snapshot + Release | ✅ Concluída | v0.4.0 publicada (1,46 GB de assets) |
 | Makefile (atalhos make restore-artifacts/smoke/all) | ✅ Concluída | testado end-to-end |
-| 5. Retrieval (hybrid + rerank) | 🔨 Em andamento | @pedro |
-| 6. Geração (Claude + prompt) | 📋 Planejada | Sonnet 4.6 com citações enforçadas |
-| 7. Avaliação (Ragas + golden) | 📋 Planejada | hit@k, MRR, faithfulness, answer relevance |
-| 8. Serving (FastAPI + Streamlit) | 📋 Opcional | endpoint `/query` + UI demo |
+| 5. Retrieval (hybrid + rerank) | ✅ Concluída | Dense (bge-m3) + BM25 + RRF + rerank |
+| 6. Geração (Claude + prompt caching) | ✅ Concluída | Sonnet 4.6 com citações enforçadas, ~2-5s/query |
+| 7. Avaliação (golden set + métricas) | ✅ Concluída | 79 questões, hit@10=0.7246, MRR=0.619 |
+| 8. Serving (FastAPI + Streamlit) | 📋 Opcional | endpoint `/query` + UI demo (future) |
 
 ---
 

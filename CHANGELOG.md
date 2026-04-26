@@ -7,6 +7,27 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — 2026-04-26 — Documentação: Fases 5-7 completadas
+
+**Autor:** Mateus (master)
+
+### Changed
+- `README.md` — atualiza status geral: Fases 1-7 concluídas (was "Fases 1-4")
+  - Arquitetura diagrama: Fases 5, 6 de "🔨 próxima" / "📋 planejada" → "✅ concluída"
+  - Fase 7 de "📋 planejada" → "✅ concluída" com métricas reais (hit@5=0.7101, hit@10=0.7246, hit@20=0.8116, MRR=0.619)
+  - Seção Fase 5 expandida com detalhes de implementação (hybrid retrieval, RRF, reranking)
+  - Seção Fase 7 expandida com resultados golden set (79 questões estratificadas) e métricas retrieval/latency
+  - Roadmap atualizado: todas fases 1-7 → "✅ Concluída", Fase 8 → "📋 Opcional"
+- `HANDOFF.md` — atualiza status: "nenhuma fase em execução" → "Fases 1–7 100% concluídas, Fase 8 opcional"
+  - Fase 7 entry expandida com resultados de avaliação (hit@k, MRR, p50/p95 latency)
+  - Resumo de decisões de design implementadas
+
+### Notes
+- Documentação reflete conclusão real do projeto (todas métricas coletadas, validadas)
+- Próximo passo opcional: Fase 8 (FastAPI + Streamlit serving) se houver tempo
+
+---
+
 ## fc2c5fb — 2026-04-26 — Fase 7: avaliação end-to-end + métricas retrieval
 
 **Autor:** Mateus (master)

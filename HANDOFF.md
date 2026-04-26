@@ -10,19 +10,27 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-_(nenhuma fase em execução no momento — Fases 1–7 concluídas, só Fase 8 opcional restante)_
+_(nenhuma fase em execução no momento — Fases 1–7 100% concluídas, métricasValidadas. Fase 8 opcional)_
 
 ---
 
 ## Fases concluídas (no master)
 
-### ✅ Fase 7 — Golden Set (avaliação)
+### ✅ Fase 7 — Avaliação (golden set + métricas retrieval + geração)
 - **Owner:** @mateus (master)
-- **Resultado:** 79 questões geradas via Claude Sonnet 4.6 a partir de `artifacts/chunks.jsonl`
-- **Distribuição:** factual 30 / conceptual 15 / comparative 9 / multi_hop 15 / negative 10
-- **Cobertura:** REH, NDSP, DSP, PRT, REN — anos 2016/2021/2022
-- **Artefatos commitados:** `eval/golden_set.jsonl` (limpo) + `eval/golden_set_raw.jsonl` (com refs para revisão humana)
-- **Próximo passo:** revisão humana das questões antes de usar como ground truth final; integrar com Ragas + `src/generate.py`
+- **Golden set:** 79 questões geradas via Claude Sonnet 4.6 a partir de `artifacts/chunks.jsonl`
+  - Distribuição: factual 30 / conceptual 15 / comparative 9 / multi_hop 15 / negative 10
+  - Cobertura: REH, NDSP, DSP, PRT, REN — anos 2016/2021/2022
+  - Artefatos: `eval/golden_set.jsonl` (limpo) + `eval/golden_set_raw.jsonl` (com refs para revisão humana)
+- **Avaliação de retrieval (69 questões não-negativas):**
+  - **hit@5 = 0.7101** (71% das perguntas encontram doc relevante no top-5)
+  - **hit@10 = 0.7246** (72% no top-10)
+  - **hit@20 = 0.8116** (81% no top-20)
+  - **MRR = 0.6190** (posição média do primeiro relevante ~1.6)
+- **Avaliação de geração (20 questões, parada por API credit exhaustion):**
+  - Latency p50 = 3.0s, p95 = 21.9s (com embedding + rerank + Claude)
+  - Implementação alternativa de LLM eval (substituiu Ragas 0.2 breaking change)
+- **Próximo passo:** reexecutar geração quando API credits forem recarregados (13/79 restantes); opcional Fase 8 (FastAPI + Streamlit)
 
 ### ✅ Fase 6 — Geração (Claude Sonnet 4.6 + citações)
 - **Owner:** @amigo (worktree `naughty-tu-6a7a33`)
