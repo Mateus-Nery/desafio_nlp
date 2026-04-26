@@ -128,6 +128,18 @@ restore-artifacts: ## [2] Caminho 2 completo: sobe Qdrant, baixa artefatos, rest
 smoke: ## [2] Roda smoke_query_qdrant.py (5 queries dense, valida pipeline)
 	$(PYTHON) scripts/smoke_query_qdrant.py
 
+QUERY ?= o que é TUSD e como ela é calculada?
+
+.PHONY: generate
+generate: ## [2] Fase 6 - query interativa com Claude Sonnet 4.6 (requer .env com ANTHROPIC_API_KEY)
+	@test -f .env || (echo "ERRO: crie .env a partir de .env.example e preencha ANTHROPIC_API_KEY" && exit 1)
+	@export $$(grep -v '^#' .env | xargs) && \
+	  $(PYTHON) -m src.generate \
+	    --query "$(QUERY)" \
+	    --bm25-path $(BM25) \
+	    --qdrant-url $(QDRANT_URL) \
+	    --top-k 10
+
 # ──────────────────────────────────────────────────────────────────────────
 # Caminho 1 - pipeline completo do zero
 # ──────────────────────────────────────────────────────────────────────────

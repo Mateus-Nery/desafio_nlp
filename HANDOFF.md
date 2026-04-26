@@ -10,7 +10,7 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-_(nenhuma fase em execução no momento — aguardando Fase 6 para integrar retrieval + geração + avaliação)_
+_(nenhuma fase em execução no momento — Fases 1–7 concluídas, só Fase 8 opcional restante)_
 
 ---
 
@@ -22,7 +22,20 @@ _(nenhuma fase em execução no momento — aguardando Fase 6 para integrar retr
 - **Distribuição:** factual 30 / conceptual 15 / comparative 9 / multi_hop 15 / negative 10
 - **Cobertura:** REH, NDSP, DSP, PRT, REN — anos 2016/2021/2022
 - **Artefatos commitados:** `eval/golden_set.jsonl` (limpo) + `eval/golden_set_raw.jsonl` (com refs para revisão humana)
-- **Próximo passo:** revisão humana das questões antes de usar como ground truth final; integrar com Ragas na Fase 6→7
+- **Próximo passo:** revisão humana das questões antes de usar como ground truth final; integrar com Ragas + `src/generate.py`
+
+### ✅ Fase 6 — Geração (Claude Sonnet 4.6 + citações)
+- **Owner:** @amigo (worktree `naughty-tu-6a7a33`)
+- **Implementado:** `src/generate.py` — `generate(query, hits, client) → GenerationResult`
+- **Decisões fechadas:**
+  1. System prompt com `cache_control="ephemeral"` → prompt caching ativo em todas as chamadas
+  2. Citações inline `[N]` extraídas por regex do texto gerado; `citations[]` estruturado separado
+  3. Anti-alucinação hard: responde APENAS pelo contexto; fallback fixo "Não encontrei informação suficiente…"
+  4. Streaming ativo por padrão no CLI; `--no-stream` / `--json` para batch/Ragas
+  5. Interface Python limpa: reutilizável diretamente pela Fase 7 sem overhead de CLI
+- **Makefile:** target `generate` adicionado (Caminho 2); `make generate QUERY="..."` com `.env` carregado
+- **Smoke de lógica:** context block + extração de citações validados; retrieve CPU validado (3s, 5 hits coerentes para "TUSD")
+- **Pendente:** smoke end-to-end com `ANTHROPIC_API_KEY` real (requer `.env` preenchido)
 
 ### ✅ Fase 5 — Retrieval híbrido (dense + BM25 + RRF + reranker)
 - **Owner:** @pedro (worktree `kind-panini-16a380`)
@@ -82,14 +95,6 @@ _(nenhuma fase em execução no momento — aguardando Fase 6 para integrar retr
 ---
 
 ## Próximas fases — não iniciadas
-
-### Fase 6 — Geração (livre)
-- Claude Sonnet 4.6 com prompt enforçando citações por chunk_id+url
-- Depende de: Fase 5
-
-### Fase 7 — Avaliação (livre)
-- Ragas + golden set ~80 perguntas
-- **Pode começar a esboçar o golden set em paralelo agora** (não bloqueia ninguém — só precisa do `chunks.jsonl` pra entender o vocabulário do corpus, e ele já existe localmente)
 
 ### Fase 8 — Serving (opcional, livre)
 - FastAPI + Streamlit
