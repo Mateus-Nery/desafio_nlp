@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## TBD — 2026-04-26 — Fase 6: geração com Claude Sonnet 4.6 + citações
+## 001dd1f — 2026-04-26 — Fase 6: geração com Claude Sonnet 4.6 + citações
 
 **Autor:** @amigo (worktree `naughty-tu-6a7a33`)
 
