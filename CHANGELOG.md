@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-26 — Fase 7: avaliação end-to-end + métricas retrieval
+## fc2c5fb — 2026-04-26 — Fase 7: avaliação end-to-end + métricas retrieval
 
 **Autor:** Mateus (master)
 
