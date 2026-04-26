@@ -207,6 +207,11 @@ desafio_nlp/
 
 - Python 3.11+ (3.10 também funciona)
 - Docker + Docker Compose
+- **GNU Make** — usado como atalho pros comandos. Instalação:
+  - Linux: já vem (`apt install make` se faltar)
+  - macOS: `brew install make` (ou já vem com Xcode CLT)
+  - Windows: `choco install make` ou `scoop install make`. Alternativa: o Git for Windows já traz `mingw32-make` (sintaxe idêntica)
+  - Quem prefere não instalar make: cada target tem o equivalente raw na seção [Fases do Pipeline](#fases-do-pipeline)
 - (opcional) GPU CUDA ou Apple MPS — autodetectada
 - ~5 GB livres em disco para o Caminho 2 (modelo bge-m3 + snapshot + Qdrant volume)
 - ~10 GB livres em disco para o Caminho 1 (acima + 4 GB de PDFs)
@@ -244,19 +249,23 @@ Pula a parte cara restaurando os artefatos pré-computados publicados como
 Claude bastam para responder qualquer query.
 
 ```bash
-mkdir -p artifacts
+make restore-artifacts   # sobe Qdrant, baixa snapshot+bm25+manifest da Release, restaura (~5-10 min)
+make smoke               # 5 queries dense, valida que retrieval responde
+```
 
-# Baixa snapshot Qdrant (1.22 GB) + índice BM25 (244 MB)
+Equivalente raw bash (sem make):
+
+```bash
+mkdir -p artifacts
+docker compose up -d
 curl -L -o artifacts/qdrant_snapshot.tar \
   https://github.com/Mateus-Nery/desafio_nlp/releases/download/v0.4.0/qdrant_snapshot.tar
 curl -L -o artifacts/bm25_index.pkl \
   https://github.com/Mateus-Nery/desafio_nlp/releases/download/v0.4.0/bm25_index.pkl
-
-# Restaura snapshot na coleção aneel_chunks (~14 s)
+curl -L -o artifacts/manifest.json \
+  https://github.com/Mateus-Nery/desafio_nlp/releases/download/v0.4.0/manifest.json
 curl -X POST 'http://localhost:6333/collections/aneel_chunks/snapshots/upload?priority=snapshot' \
      -F snapshot=@artifacts/qdrant_snapshot.tar
-
-# Smoke: 5 queries dense, valida que retrieval responde
 python scripts/smoke_query_qdrant.py
 ```
 
@@ -287,34 +296,19 @@ Reproduz **todas as fases** do zero a partir dos 3 JSONs ANEEL. Lento mas
 total. Útil pra examinador rigoroso que quer validar a reprodutibilidade.
 
 ```bash
-# Fase 1 — baixa 26.731 PDFs da ANEEL (~13 min)
-python scripts/download_aneel_pdfs.py \
-  --json-dir data/dados_grupo_estudos \
-  --output-dir data/pdfs_aneel \
-  --concurrency 8
+make all   # download + parse + chunk + index, em sequência (~3-4 horas total)
 
-# Análise exploratória do corpus (opcional, valida saúde dos PDFs)
-python scripts/analyze_pdfs.py \
-  --pdfs-dir data/pdfs_aneel \
-  --report-json data/pdfs_aneel/_analysis.json
-
-# Fase 2 — extrai texto dos PDFs (~30 min com 8 cores)
-python -m src.parse_pdfs \
-  --pdfs-root data/pdfs_aneel \
-  --out artifacts/parsed.jsonl \
-  --workers 8
-
-# Fase 3 — chunking 3-tier (~10 s)
-python -m src.chunk \
-  --in artifacts/parsed.jsonl \
-  --out artifacts/chunks.jsonl
-
-# Fase 4 — embeddings + Qdrant + BM25 (depende do hardware, ver tabela abaixo)
-python -m src.index \
-  --chunks artifacts/chunks.jsonl \
-  --bm25-out artifacts/bm25_index.pkl \
-  --batch-size 80
+# ou fase por fase, pra checar cada saída:
+make download    # Fase 1 — baixa 26.731 PDFs da ANEEL (~13 min)
+make analyze     # análise exploratória do corpus (opcional)
+make parse       # Fase 2 — extrai texto dos PDFs (~30 min em 8 cores)
+make chunk       # Fase 3 — chunking 3-tier (~10 s)
+make index       # Fase 4 — embeddings + Qdrant + BM25 (~2 h em RTX 3050)
 ```
+
+Equivalente raw bash em [Fases do Pipeline](#fases-do-pipeline) — cada
+fase tem o `python -m src.<modulo>` ou `python scripts/<arquivo>.py`
+documentado.
 
 **Tempos esperados na Fase 4** (a mais cara — 160.267 chunks bge-m3):
 
@@ -332,14 +326,12 @@ Valida que tudo está corretamente instalado e responde. Pré-requisito:
 Caminho 2 já restaurou o snapshot.
 
 ```bash
-# Carrega bge-m3 (cache local), encoda 5 queries de domínio,
-# faz busca dense via Qdrant, mostra top-3 com payload completo
-python scripts/smoke_query_qdrant.py
+make smoke
 ```
 
-Saída esperada: top-3 coerente para "TUSD", "prazo de ligação",
-"microgeração distribuída", etc. Tempo total: ~20 s (incluindo carga
-do bge-m3 do cache, ~3 s).
+Equivale a `python scripts/smoke_query_qdrant.py`. Saída esperada: top-3
+coerente para "TUSD", "prazo de ligação", "microgeração distribuída", etc.
+Tempo total: ~20 s (incluindo carga do bge-m3 do cache, ~3 s).
 
 ### Query interativa
 
@@ -1043,11 +1035,11 @@ Relatório completo per-PDF em `data/pdfs_aneel/_analysis.json`.
 | 3. Chunking 3-tier | ✅ Concluída | 160.267 chunks em 8 s |
 | 4. Indexação (embed + Qdrant + BM25) | ✅ Concluída | 130 min em RTX 3050 (batch 80) |
 | Snapshot + Release | ✅ Concluída | v0.4.0 publicada (1,46 GB de assets) |
-| 5. Retrieval (hybrid + rerank) | 🔨 Próxima | dense+BM25 → RRF → bge-reranker-v2-m3 |
+| Makefile (atalhos make restore-artifacts/smoke/all) | ✅ Concluída | testado end-to-end |
+| 5. Retrieval (hybrid + rerank) | 🔨 Em andamento | @pedro |
 | 6. Geração (Claude + prompt) | 📋 Planejada | Sonnet 4.6 com citações enforçadas |
 | 7. Avaliação (Ragas + golden) | 📋 Planejada | hit@k, MRR, faithfulness, answer relevance |
 | 8. Serving (FastAPI + Streamlit) | 📋 Opcional | endpoint `/query` + UI demo |
-| Makefile com targets `make restore-artifacts`/`make smoke` | 📋 Nice-to-have | hoje os comandos são raw bash |
 
 ---
 

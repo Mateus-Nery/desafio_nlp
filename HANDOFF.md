@@ -10,13 +10,12 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-_(nada — Fase 4 e o Release público estão fechados. Próximas livres listadas abaixo.)_
+### 🔨 Fase 5 — Retrieval
+- **Owner:** @pedro
+- **Status:** em andamento (anunciado verbalmente, ainda sem commit no remoto)
+- **Não interferir em:** `src/retrieve.py` (a criar), `requirements.txt` (caso adicione reranker)
 
-> **Sugestão de divisão pra próxima sessão:**
-> - **Pedro** pega **Fase 5 (Retrieval)** — ele escreveu o `src/index.py` então tem o contexto fresco dos named vectors no Qdrant + BM25 pickle. Ver "Para o Pedro começar a Fase 5" abaixo.
-> - **Mateus** pode (a) começar a esboçar o **golden set da Fase 7** (não bloqueia ninguém) ou (b) criar o **Makefile** com `restore-artifacts` / `smoke` (cosmético).
->
-> Coordenar pelo arquivo antes de começar — primeiro a anunciar pega.
+_(Mateus terminou o Makefile — ver fases concluídas abaixo. Próximas livres pra ele: golden set da Fase 7, ou esboço de Fase 6.)_
 
 ---
 
@@ -75,6 +74,19 @@ query
 
 ## Fases concluídas (no master)
 
+### ✅ Makefile com atalhos pros 3 caminhos
+- **Owner:** @mateus
+- **Motivação:** o Claude do Pedro relatou atrito ao tentar o Caminho 2 sem `make`.
+- **Targets implementados:**
+  - **Caminho 2:** `restore-artifacts` (chain qdrant-up + download-artifacts + upload-snapshot), `smoke`
+  - **Caminho 1:** `download`, `analyze`, `parse`, `chunk`, `index`, `all`
+  - **Infra:** `qdrant-up`, `qdrant-down`, `clean-artifacts`, `clean-qdrant`, `clean-collection`
+  - **Help:** `make` (sem argumentos) mostra menu organizado por categoria
+- **Variáveis customizáveis** (`make X VAR=valor`): `PYTHON`, `QDRANT_URL`, `COLLECTION`, `RELEASE_TAG`, `BATCH_SIZE`, `CONCURRENCY`, `WORKERS`
+- **Detecta OS** (Windows usa `.venv/Scripts/python.exe`, Linux/Mac usa `.venv/bin/python`)
+- **Validado end-to-end:** `make restore-artifacts` rodou em 14s, restaurou os 160.267 pontos; `make smoke` retornou top-3 coerente em todas as 5 queries (mesmo resultado da sessão anterior).
+- **README atualizado** com `make` em todos os 3 Caminhos + instalação do make em cada OS.
+
 ### ✅ Fase 4 — Indexação (executada e validada)
 - **Owner:** @mateus (master, RTX 3050 6 GB Laptop)
 - **Resultado:** 160.267 chunks indexados em Qdrant (dense bge-m3 1024-dim cosine + sparse lexical_weights, payload com texto cru e metadados). Coleção `aneel_chunks`, status green.
@@ -126,9 +138,6 @@ query
 ### Fase 8 — Serving (opcional, livre)
 - FastAPI + Streamlit
 
-### Makefile com targets `restore-artifacts` / `smoke` (livre, nice-to-have)
-- README hoje documenta os comandos raw bash; um Makefile facilita a vida do examinador
-- Targets sugeridos: `make restore-artifacts` (curl Release v0.4.0 + upload Qdrant), `make smoke` (roda `scripts/smoke_query_qdrant.py`), `make all` (combinação)
 
 ---
 
