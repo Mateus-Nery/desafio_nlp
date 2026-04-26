@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — fix: 3 bugs no Makefile (venv path, gawk-only `gensub`, race do Qdrant)
+## 2d3c239 — 2026-04-26 — fix: 3 bugs no Makefile (venv path, gawk-only `gensub`, race do Qdrant)
 
 **Autor:** Pedro (master)
 
