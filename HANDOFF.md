@@ -10,15 +10,19 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-### 🔨 Fase 7 — Golden Set (avaliação)
-- **Owner:** @mateus
-- **Status:** em andamento — script `eval/generate_golden_set.py` a criar
-- **Plano:** ~80 questões estratificadas (factual/conceptual/comparative/multi_hop/negative), geradas via Claude Sonnet 4.6 a partir de `artifacts/chunks.jsonl`, salvas em `eval/golden_set.jsonl`
-- **Não depende de Fase 6** — pode correr em paralelo
+_(nenhuma fase em execução no momento — aguardando Fase 6 para integrar retrieval + geração + avaliação)_
 
 ---
 
 ## Fases concluídas (no master)
+
+### ✅ Fase 7 — Golden Set (avaliação)
+- **Owner:** @mateus (master)
+- **Resultado:** 79 questões geradas via Claude Sonnet 4.6 a partir de `artifacts/chunks.jsonl`
+- **Distribuição:** factual 30 / conceptual 15 / comparative 9 / multi_hop 15 / negative 10
+- **Cobertura:** REH, NDSP, DSP, PRT, REN — anos 2016/2021/2022
+- **Artefatos commitados:** `eval/golden_set.jsonl` (limpo) + `eval/golden_set_raw.jsonl` (com refs para revisão humana)
+- **Próximo passo:** revisão humana das questões antes de usar como ground truth final; integrar com Ragas na Fase 6→7
 
 ### ✅ Fase 5 — Retrieval híbrido (dense + BM25 + RRF + reranker)
 - **Owner:** @pedro (worktree `kind-panini-16a380`)

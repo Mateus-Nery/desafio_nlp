@@ -7,6 +7,32 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — 2026-04-26 — Fase 7: golden set (79 questões para avaliação RAG)
+
+**Autor:** Mateus (master)
+
+### Added
+- `eval/generate_golden_set.py` — script de geração do golden set:
+  - Lê `artifacts/chunks.jsonl` (160.267 chunks), amostragem estratificada por `(tipo_ato, year)`
+  - 5 tipos de questão: `factual` (30), `conceptual` (15), `comparative` (10), `multi_hop` (15), `negative` (10)
+  - Fator de sobreamostragem 2× para compensar falhas de parse/qualidade
+  - Chama Claude Sonnet 4.6 via API — 160 chamadas totais, ~14 min de execução
+  - Prompts específicos por tipo; `chunk_ids` resolvidos no código (não pelo LLM — evita escape de backslash no JSON)
+  - Salva `eval/golden_set.jsonl` (limpo, para avaliação) e `eval/golden_set_raw.jsonl` (com `_chunk_text_ref` para revisão humana)
+  - Loader de `.env` que sobrescreve variáveis vazias do ambiente (fix para `ANTHROPIC_API_KEY` vazio no Windows)
+- `eval/__init__.py` — pacote Python
+- `eval/golden_set.jsonl` — 79 questões geradas (factual 30 / conceptual 15 / comparative 9 / multi_hop 15 / negative 10)
+- `eval/golden_set_raw.jsonl` — versão com trechos de referência para revisão humana
+
+### Notes
+- 79/80 questões — comparative 9/10 por variabilidade de parse (oversample cobre nas próximas rodadas)
+- Questões cobrindo: REH, NDSP, DSP, PRT, REN — anos 2015/2016/2020/2021/2022
+- Multi-hop exige 2 documentos distintos; comparative exige mesmo tipo_ato em anos diferentes
+- **Revisão humana recomendada** antes de usar como ground truth final (ver `golden_set_raw.jsonl`)
+- CLI: `python -m eval.generate_golden_set [--limit N] [--out ...] [--seed ...]`
+
+---
+
 ## c02e759 — 2026-04-26 — Infraestrutura de variáveis de ambiente + início Fase 7
 
 **Autor:** Mateus (master)
