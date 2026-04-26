@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — Makefile com atalhos pros 3 Caminhos do README
+## 6587c0a — 2026-04-26 — Makefile com atalhos pros 3 Caminhos do README
 
 **Autor:** Mateus (master)
 
