@@ -7,6 +7,38 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — 2026-04-26 — Review geral: bug fixes + targets eval + estrutura README
+
+**Autor:** Mateus (master)
+
+### Fixed
+- `scripts/smoke_query_qdrant.py` — autodetect device (CUDA → CPU) em vez de hardcoded `device="cuda"` que quebrava em máquinas sem GPU NVIDIA
+
+### Added
+- `Makefile` — 3 novos targets para Fase 7:
+  - `make golden-set` — gera 80 questões via Claude (Caminho 1, ~14 min, custa tokens)
+  - `make evaluate` — só retrieval (Caminho 2, rápido, sem API)
+  - `make evaluate-full` — retrieval + geração + LLM eval (custa tokens, opcional `GEN_LIMIT=N`)
+
+### Changed
+- `.gitignore` — adiciona `eval/eval_results*.jsonl` e `eval/eval_summary*.json` (outputs gerados, regeráveis)
+- `README.md` — corrige seção "Estrutura do Repositório":
+  - Remove referências a arquivos inexistentes (`src/serve.py`, `src/pipeline.py`, `src/evaluate.py`, `tests/`, `Dockerfile`, `pyproject.toml`)
+  - Adiciona pasta `eval/` com layout real (generate_golden_set.py, evaluate.py, golden_set*.jsonl)
+  - Adiciona arquivos de coordenação no top-level (HANDOFF.md, CHANGELOG.md, CLAUDE.md)
+  - Lista todos os 4 scripts em `scripts/` (incluindo `explore_pdfs.py` e `smoke_query_qdrant.py`)
+- `README.md` — Stack Tecnológica: corrige linha de avaliação (não usa Ragas, usa Claude Haiku como LLM-as-judge — Ragas 0.2 tem breaking change que requer InstructorLLM)
+- `README.md` — Fase 7: adiciona seção "Comandos" e "Saídas" mostrando uso real
+- `README.md` — Caminho 2: adiciona linhas opcionais para `make evaluate` e `make generate`
+- `requirements.txt` — remove `ragas>=0.2` e `langchain-anthropic>=1.4` (não utilizadas no código atual; nota explicativa adicionada)
+
+### Notes
+- Review pediu confirmação do estado real do código vs documentação. Discrepâncias encontradas e corrigidas.
+- Smoke script bug fix garante que examinador em macOS/Linux sem CUDA não trava.
+- Makefile agora cobre 100% das fases via `make <fase>` (download/parse/chunk/index/golden-set/evaluate).
+
+---
+
 ## 90ca635 — 2026-04-26 — Documentação: Fases 5-7 completadas
 
 **Autor:** Mateus (master)

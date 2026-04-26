@@ -23,6 +23,10 @@ data/pdfs_aneel/
 # Artefatos gerados (publicados via GitHub Release)
 artifacts/
 
+# Outputs de avaliação (gerados por eval/evaluate.py - regerável)
+eval/eval_results*.jsonl
+eval/eval_summary*.json
+
 # Logs runtime
 *.log
 

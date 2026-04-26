@@ -27,9 +27,13 @@ def main() -> int:
     from FlagEmbedding import BGEM3FlagModel
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as qm
+    import torch
 
-    print("Carregando bge-m3 (cache local)...", flush=True)
-    model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=True, device="cuda")
+    # Autodetect: CUDA → CPU. Pula MPS por default (bugs históricos do FlagReranker)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    use_fp16 = (device == "cuda")
+    print(f"Carregando bge-m3 (device={device}, cache local)...", flush=True)
+    model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=use_fp16, device=device)
 
     client = QdrantClient(url="http://localhost:6333", timeout=60)
 

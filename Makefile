@@ -181,6 +181,34 @@ index: ## [1] Fase 4 - embeddings bge-m3 + Qdrant + BM25 (~2h em RTX 3050)
 all: download parse chunk index ## [1] Roda Fases 1-4 em sequencia (varias horas)
 
 # ──────────────────────────────────────────────────────────────────────────
+# Fase 7 - Avaliacao
+# ──────────────────────────────────────────────────────────────────────────
+
+GEN_LIMIT ?=
+
+.PHONY: golden-set
+golden-set: ## [1] Fase 7 - gera golden set (~80 questoes via Claude, ~14 min, custa tokens)
+	@test -f .env || (echo "ERRO: crie .env a partir de .env.example e preencha ANTHROPIC_API_KEY" && exit 1)
+	@export $$(grep -v '^#' .env | xargs) && \
+	  $(PYTHON) -m eval.generate_golden_set
+
+.PHONY: evaluate
+evaluate: ## [2] Fase 7 - so retrieval (rapido, sem custo de API): hit@k, MRR
+	$(PYTHON) -m eval.evaluate \
+	  --bm25-path $(BM25) \
+	  --qdrant-url $(QDRANT_URL)
+
+.PHONY: evaluate-full
+evaluate-full: ## [2] Fase 7 - retrieval + geracao + LLM eval (~30 min, custa tokens)
+	@test -f .env || (echo "ERRO: crie .env a partir de .env.example e preencha ANTHROPIC_API_KEY" && exit 1)
+	@export $$(grep -v '^#' .env | xargs) && \
+	  $(PYTHON) -m eval.evaluate \
+	    --with-generation \
+	    --bm25-path $(BM25) \
+	    --qdrant-url $(QDRANT_URL) \
+	    $(if $(GEN_LIMIT),--gen-limit $(GEN_LIMIT))
+
+# ──────────────────────────────────────────────────────────────────────────
 # Limpeza
 # ──────────────────────────────────────────────────────────────────────────
 

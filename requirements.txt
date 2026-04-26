@@ -17,14 +17,12 @@ torch>=2.2               # CPU/CUDA/MPS autodetect
 # Linux/Mac: o pip já resolve a build certa automaticamente.
 numpy>=1.26
 
-# Fase 6 — Geração
+# Fase 6 — Geração + Fase 7 — Avaliação (LLM-as-judge usa o mesmo SDK)
 anthropic>=0.40
+# Nota: Ragas 0.2+ tem breaking change na API que requer InstructorLLM (apenas OpenAI).
+# Substituímos Ragas por LLM eval simples via Claude Haiku 4.5 — ver eval/evaluate.py.
 
-# Fase 7 — Avaliação
-ragas>=0.2
-langchain-anthropic>=1.4    # LLM wrapper do Ragas para métricas faithfulness/relevancy
-
-# Fase 8 — Serving (opcional)
+# Fase 8 — Serving (opcional, planejado)
 fastapi>=0.115
 uvicorn>=0.30
 streamlit>=1.40

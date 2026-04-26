@@ -138,9 +138,9 @@ conseguir clonar o repo e ter o sistema funcionando sem dor.
 | Sparse search | `rank_bm25` | 0.2+ | Pure Python, complementa bge-m3 sparse |
 | Reranker | `BAAI/bge-reranker-v2-m3` | latest | Padrão da indústria, ganho de qualidade significativo |
 | LLM gerador | **Claude Sonnet 4.6** (API) | claude-sonnet-4-6 | Excelente em PT-BR jurídico, citações confiáveis, contexto longo |
-| Avaliação | `ragas` + golden set custom | 0.2+ | Faithfulness + answer relevance, métricas determinísticas |
-| API | `FastAPI` | 0.115+ | (opcional) demo |
-| UI | `Streamlit` | 1.40+ | (opcional) demo |
+| Avaliação | golden set custom + LLM-as-judge (Claude Haiku) | — | hit@k/MRR + faithfulness/answer_relevance via Claude (Ragas 0.2 API quebrada) |
+| API | `FastAPI` | 0.115+ | (opcional, Fase 8) demo |
+| UI | `Streamlit` | 1.40+ | (opcional, Fase 8) demo |
 | Infra | Docker Compose | 2.20+ | Sobe Qdrant + app com 1 comando |
 
 ---
@@ -150,17 +150,18 @@ conseguir clonar o repo e ter o sistema funcionando sem dor.
 ```
 desafio_nlp/
 ├── README.md                          ← este arquivo
-├── pyproject.toml                     ← versões fixas (poetry/uv)
-├── requirements.txt                   ← idem, gerado pinned
-├── docker-compose.yml                 ← Qdrant + app
-├── Dockerfile                         ← imagem multi-stage
-├── Makefile                           ← orquestração de tarefas
-├── .env.example                       ← ANTHROPIC_API_KEY=
+├── HANDOFF.md                         ← estado WIP (multi-Claude)
+├── CHANGELOG.md                       ← histórico append-only
+├── CLAUDE.md                          ← instruções p/ colaboradores Claude
+├── requirements.txt                   ← versões pinadas
+├── docker-compose.yml                 ← Qdrant
+├── Makefile                           ← orquestração de tarefas (3 caminhos)
+├── .env.example                       ← template de variáveis
 ├── .gitignore
 │
 ├── data/
-│   ├── dados_grupo_estudos/           ← 3 JSONs ANEEL (entrada)
-│   └── pdfs_aneel/                    ← 26.731 PDFs + manifests
+│   ├── dados_grupo_estudos/           ← 3 JSONs ANEEL (entrada, gitignored)
+│   └── pdfs_aneel/                    ← 26.731 PDFs + manifests (gitignored)
 │       ├── 2016/*.pdf
 │       ├── 2021/*.pdf
 │       ├── 2022/*.pdf
@@ -170,33 +171,34 @@ desafio_nlp/
 │       └── _analysis.json             ← saída de analyze_pdfs.py
 │
 ├── artifacts/                         ← gerados pelo pipeline (gitignored)
-│   ├── chunks.jsonl                   ← Fase 3
+│   ├── parsed.jsonl                   ← Fase 2 (1 linha por doc)
+│   ├── chunks.jsonl                   ← Fase 3 (1 linha por chunk)
 │   ├── qdrant_snapshot.tar            ← Fase 4 (snapshot Qdrant)
 │   ├── bm25_index.pkl                 ← Fase 4 (BM25 serializado)
 │   └── manifest.json                  ← versões + hashes
 │
 ├── src/
 │   ├── __init__.py
-│   ├── parse_pdfs.py                  ← Fase 2
-│   ├── chunk.py                       ← Fase 3
+│   ├── parse_pdfs.py                  ← Fase 2 (PyMuPDF + cleaning)
+│   ├── chunk.py                       ← Fase 3 (3-tier data-driven)
 │   ├── index.py                       ← Fase 4 (embeddings + Qdrant + BM25)
 │   ├── retrieve.py                    ← Fase 5 (hybrid + RRF + rerank)
-│   ├── generate.py                    ← Fase 6 (Claude + prompt + citações)
-│   ├── evaluate.py                    ← Fase 7 (Ragas + métricas)
-│   ├── serve.py                       ← Fase 8 (FastAPI/Streamlit)
-│   └── pipeline.py                    ← orquestrador end-to-end
+│   └── generate.py                    ← Fase 6 (Claude + prompt + citações)
 │
-├── eval/
-│   ├── golden_set.jsonl               ← ~80 perguntas+respostas+docs
-│   └── eval_report.json               ← saída de evaluate.py
+├── eval/                              ← Fase 7 (avaliação RAG)
+│   ├── __init__.py
+│   ├── generate_golden_set.py         ← gera golden set via Claude
+│   ├── evaluate.py                    ← métricas hit@k/MRR + LLM eval
+│   ├── golden_set.jsonl               ← 79 perguntas estratificadas (versionado)
+│   ├── golden_set_raw.jsonl           ← versão com refs p/ revisão humana
+│   ├── eval_results*.jsonl            ← resultados por questão (gitignored)
+│   └── eval_summary*.json             ← métricas agregadas (gitignored)
 │
-├── scripts/                           ← scripts standalone Fase 1
-│   ├── download_aneel_pdfs.py         ← (Fase 1) ✅ funciona
-│   └── analyze_pdfs.py                ← análise exploratória ✅ funciona
-│
-└── tests/
-    ├── test_smoke.py                  ← <30s, valida pipeline ponta-a-ponta
-    └── test_*.py                      ← unit tests por módulo
+└── scripts/                           ← scripts standalone
+    ├── download_aneel_pdfs.py         ← Fase 1 — download dos PDFs
+    ├── analyze_pdfs.py                ← análise exploratória do corpus
+    ├── explore_pdfs.py                ← extrai amostras p/ inspeção manual
+    └── smoke_query_qdrant.py          ← Caminho 3 — smoke test rápido
 ```
 
 ---
@@ -251,6 +253,8 @@ Claude bastam para responder qualquer query.
 ```bash
 make restore-artifacts   # sobe Qdrant, baixa snapshot+bm25+manifest da Release, restaura (~5-10 min)
 make smoke               # 5 queries dense, valida que retrieval responde
+make evaluate            # (opcional) métricas de retrieval em 79 questões do golden set
+make generate QUERY="o que é TUSD?"  # (opcional) requer .env com ANTHROPIC_API_KEY
 ```
 
 Equivalente raw bash (sem make):
@@ -945,6 +949,37 @@ Módulo: `src/evaluate.py` (desenvolvido por @mateus, Fase 7 concluída)
 | Retrieval | MRR | Posição média do primeiro relevante | ✅ 0.619 |
 | Generation | Latency (p50/p95) | Tempo query → resposta | ✅ 3s / 21.9s |
 | Negative queries | Resposta "não consta" | Evita alucinações | ✅ 10 casos testados |
+
+#### Comandos
+
+```bash
+# Gerar golden set (~14 min, custa tokens — só rodar 1x, ou quando o corpus mudar)
+make golden-set
+
+# Avaliar só retrieval (rápido, ~3 min, sem custo de API):
+make evaluate
+
+# Avaliação completa: retrieval + geração + LLM eval (~30 min, custa tokens)
+make evaluate-full
+
+# Smoke test de geração com limite de questões:
+make evaluate-full GEN_LIMIT=10
+
+# Equivalente raw (sem make):
+python -m eval.evaluate                          # retrieval-only
+python -m eval.evaluate --with-generation        # full
+python -m eval.evaluate --with-generation --gen-limit 10
+```
+
+#### Saídas
+
+```
+eval/
+├── golden_set.jsonl               # 79 questões (versionado, ground truth)
+├── golden_set_raw.jsonl           # com refs para revisão humana (versionado)
+├── eval_results.jsonl             # resultados por questão (gitignored)
+└── eval_summary.json              # métricas agregadas (gitignored)
+```
 
 ---
 
