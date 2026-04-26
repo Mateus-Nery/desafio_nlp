@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-26 — Fase 7: golden set (79 questões para avaliação RAG)
+## 4e4c097 — 2026-04-26 — Fase 7: golden set (79 questões para avaliação RAG)
 
 **Autor:** Mateus (master)
 
