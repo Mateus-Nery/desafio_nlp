@@ -7,6 +7,23 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — fix: 3 bugs no Makefile (venv path, gawk-only `gensub`, race do Qdrant)
+
+**Autor:** Pedro (master)
+
+### Fixed
+- `Makefile`:
+  1. **`PYTHON` path** — assumia `.venv/bin/python`, mas o projeto usa `venv/bin/python` (sem ponto). Qualquer target Python (smoke/parse/chunk/index e a validação dentro de `upload-snapshot`) falhava com "No such file or directory". Agora detecta ambos via `$(wildcard ...)` e prefere `.venv/` se existir.
+  2. **`make help` quebrava no macOS** com `awk: calling undefined function gensub`. `gensub()` é função do GNU awk (gawk); macOS vem com awk BSD. Trocado por `sub()` (POSIX, funciona em ambos). Aplicado nos 3 blocos de help (Caminho 1, Caminho 2, Infra).
+  3. **Race condition no `qdrant-up`** — `docker compose up -d` retorna assim que o container é criado, não quando o Qdrant está aceitando requests. Na 1ª execução isso fazia `restore-artifacts` falhar no `upload-snapshot` (POST batia em daemon ainda inicializando). Agora `qdrant-up` faz `until curl -sSf $(QDRANT_URL)/healthz` com timeout de 120s.
+
+### Notes
+- Bugs descobertos ao validar o Makefile na minha máquina (Mac M-series) após a entrega da Fase 5 — testes em outro setup não pegaram.
+- Validado: `make help` agora exibe lista organizada com cores ANSI; `make smoke` resolve `PYTHON=venv/bin/python` corretamente; mensagem "Aguardando Qdrant aceitar requests..." aparece em `qdrant-up`.
+- Não inclui melhoria sugerida `make install` (deps Python) — fica como TODO no HANDOFF se for relevante.
+
+---
+
 ## 6587c0a — 2026-04-26 — Makefile com atalhos pros 3 Caminhos do README
 
 **Autor:** Mateus (master)

@@ -13,10 +13,11 @@
 # Variáveis
 # ──────────────────────────────────────────────────────────────────────────
 
+# Aceita .venv/ (poetry, uv) e venv/ (python -m venv). Prefere .venv/ se existir.
 ifeq ($(OS),Windows_NT)
-    PYTHON ?= .venv/Scripts/python.exe
+    PYTHON ?= $(if $(wildcard .venv/Scripts/python.exe),.venv/Scripts/python.exe,venv/Scripts/python.exe)
 else
-    PYTHON ?= .venv/bin/python
+    PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,venv/bin/python)
 endif
 
 QDRANT_URL  ?= http://localhost:6333
@@ -49,13 +50,13 @@ help: ## Mostra esta ajuda
 	@echo "RAG ANEEL - atalhos do Makefile"
 	@echo ""
 	@echo "  Caminho 2 (snapshot pre-construido, recomendado p/ examinador):"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[2\]/ {printf "    \033[36m%-20s\033[0m %s\n", $$1, gensub(/^\[2\] /, "", 1, $$2)}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[2\]/ {desc=$$2; sub(/^\[2\] /, "", desc); printf "    \033[36m%-20s\033[0m %s\n", $$1, desc}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "  Caminho 1 (pipeline completo do zero):"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[1\]/ {printf "    \033[36m%-20s\033[0m %s\n", $$1, gensub(/^\[1\] /, "", 1, $$2)}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[1\]/ {desc=$$2; sub(/^\[1\] /, "", desc); printf "    \033[36m%-20s\033[0m %s\n", $$1, desc}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "  Infra & utilitarios:"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[u\]/ {printf "    \033[36m%-20s\033[0m %s\n", $$1, gensub(/^\[u\] /, "", 1, $$2)}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[u\]/ {desc=$$2; sub(/^\[u\] /, "", desc); printf "    \033[36m%-20s\033[0m %s\n", $$1, desc}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "  Variaveis (override na linha de comando):"
 	@echo "    PYTHON=$(PYTHON)"
@@ -69,9 +70,15 @@ help: ## Mostra esta ajuda
 # ──────────────────────────────────────────────────────────────────────────
 
 .PHONY: qdrant-up
-qdrant-up: ## [u] Sobe Qdrant via docker compose (idempotente)
+qdrant-up: ## [u] Sobe Qdrant via docker compose e espera o daemon aceitar requests
 	docker compose up -d
-	@echo "Qdrant em $(QDRANT_URL)"
+	@echo ">>> Aguardando Qdrant aceitar requests..."
+	@n=0; until curl -sSf $(QDRANT_URL)/healthz >/dev/null 2>&1; do \
+		n=$$((n+1)); \
+		if [ $$n -gt 60 ]; then echo "Qdrant nao respondeu em 120s. Verifique 'docker logs aneel-qdrant'."; exit 1; fi; \
+		sleep 2; \
+	done
+	@echo "Qdrant pronto em $(QDRANT_URL)"
 
 .PHONY: qdrant-down
 qdrant-down: ## [u] Para Qdrant (mantem volume com dados indexados)
