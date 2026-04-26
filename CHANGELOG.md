@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-26 — Review geral: bug fixes + targets eval + estrutura README
+## acb7f0d — 2026-04-26 — Review geral: bug fixes + targets eval + estrutura README
 
 **Autor:** Mateus (master)
 
