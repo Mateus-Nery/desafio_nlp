@@ -7,7 +7,7 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
-## (não commitado) — 2026-04-26 — Documentação: Fases 5-7 completadas
+## 90ca635 — 2026-04-26 — Documentação: Fases 5-7 completadas
 
 **Autor:** Mateus (master)
 
