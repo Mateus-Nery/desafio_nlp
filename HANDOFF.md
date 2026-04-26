@@ -10,7 +10,11 @@ Este arquivo descreve **o que está em andamento agora** — coisas que `git log
 
 ## Em execução agora
 
-_(nenhuma fase em execução no momento — todas as fases até a 5 concluídas)_
+### 🔨 Fase 7 — Golden Set (avaliação)
+- **Owner:** @mateus
+- **Status:** em andamento — script `eval/generate_golden_set.py` a criar
+- **Plano:** ~80 questões estratificadas (factual/conceptual/comparative/multi_hop/negative), geradas via Claude Sonnet 4.6 a partir de `artifacts/chunks.jsonl`, salvas em `eval/golden_set.jsonl`
+- **Não depende de Fase 6** — pode correr em paralelo
 
 ---
 

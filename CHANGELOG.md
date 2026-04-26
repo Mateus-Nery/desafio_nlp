@@ -7,6 +7,18 @@ Formato (Keep a Changelog adaptado): cada entrada começa com `## <hash curto> �
 
 ---
 
+## (não commitado) — 2026-04-26 — Infraestrutura de variáveis de ambiente + início Fase 7
+
+**Autor:** Mateus (master)
+
+### Added
+- `.env.example` — template documentado com todas as variáveis do projeto (`ANTHROPIC_API_KEY`, `QDRANT_URL`, `QDRANT_COLLECTION`, opcionais de pipeline/paths). `.env` continua gitignored.
+
+### Changed
+- `HANDOFF.md` — anuncia @mateus como owner da Fase 7 (golden set), status em andamento, plano resumido
+
+---
+
 ## e6f5860 — 2026-04-26 — Fase 5: Retrieval híbrido (dense + BM25 + RRF + reranker)
 
 **Autor:** Pedro (worktree `kind-panini-16a380`)
