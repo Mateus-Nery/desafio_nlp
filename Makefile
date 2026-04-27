@@ -49,11 +49,11 @@ help: ## Mostra esta ajuda
 	@echo ""
 	@echo "RAG ANEEL - atalhos do Makefile"
 	@echo ""
-	@echo "  Caminho 2 (snapshot pre-construido, recomendado p/ examinador):"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[2\]/ {desc=$$2; sub(/^\[2\] /, "", desc); printf "    \033[36m%-20s\033[0m %s\n", $$1, desc}' $(MAKEFILE_LIST)
-	@echo ""
-	@echo "  Caminho 1 (pipeline completo do zero):"
+	@echo "  Caminho 1 (snapshot pre-construido, recomendado):"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[1\]/ {desc=$$2; sub(/^\[1\] /, "", desc); printf "    \033[36m%-20s\033[0m %s\n", $$1, desc}' $(MAKEFILE_LIST)
+	@echo ""
+	@echo "  Caminho 2 (pipeline completo do zero):"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[2\]/ {desc=$$2; sub(/^\[2\] /, "", desc); printf "    \033[36m%-20s\033[0m %s\n", $$1, desc}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "  Infra & utilitarios:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z][a-zA-Z0-9_-]*:.*## \[u\]/ {desc=$$2; sub(/^\[u\] /, "", desc); printf "    \033[36m%-20s\033[0m %s\n", $$1, desc}' $(MAKEFILE_LIST)
@@ -66,7 +66,7 @@ help: ## Mostra esta ajuda
 	@echo ""
 
 # ──────────────────────────────────────────────────────────────────────────
-# Caminho 2 - bootstrap via Release pré-construída (recomendado)
+# Caminho 1 - bootstrap via Release pré-construída (recomendado)
 # ──────────────────────────────────────────────────────────────────────────
 
 .PHONY: qdrant-up
@@ -85,7 +85,7 @@ qdrant-down: ## [u] Para Qdrant (mantem volume com dados indexados)
 	docker compose down
 
 .PHONY: download-artifacts
-download-artifacts: $(SNAPSHOT) $(BM25) $(MANIFEST) ## [2] Baixa snapshot + bm25 + manifest da Release v0.4.0
+download-artifacts: $(SNAPSHOT) $(BM25) $(MANIFEST) ## [1] Baixa snapshot + bm25 + manifest da Release v0.4.0
 
 $(ARTIFACTS):
 	@mkdir -p $(ARTIFACTS)
@@ -103,7 +103,7 @@ $(MANIFEST): | $(ARTIFACTS)
 	curl -L --fail --progress-bar -o $@ $(RELEASE_URL)/manifest.json
 
 .PHONY: upload-snapshot
-upload-snapshot: ## [2] Envia snapshot baixado pro Qdrant local (~14s, idempotente)
+upload-snapshot: ## [1] Envia snapshot baixado pro Qdrant local (~14s, idempotente)
 	@test -f $(SNAPSHOT) || (echo "ERRO: $(SNAPSHOT) nao existe. Rode 'make download-artifacts' antes." && exit 1)
 	@echo ">>> Restaurando snapshot na colecao '$(COLLECTION)'..."
 	curl -X POST '$(QDRANT_URL)/collections/$(COLLECTION)/snapshots/upload?priority=snapshot' \
@@ -113,7 +113,7 @@ upload-snapshot: ## [2] Envia snapshot baixado pro Qdrant local (~14s, idempoten
 	@curl -sS $(QDRANT_URL)/collections/$(COLLECTION) | $(PYTHON) -c "import sys,json; d=json.load(sys.stdin)['result']; print(f'  status:  {d[\"status\"]}'); print(f'  pontos:  {d[\"points_count\"]:,}'); print(f'  indexed: {d[\"indexed_vectors_count\"]:,}')"
 
 .PHONY: restore-artifacts
-restore-artifacts: ## [2] Caminho 2 completo: sobe Qdrant, baixa artefatos, restaura snapshot
+restore-artifacts: ## [1] Caminho 1 completo: sobe Qdrant, baixa artefatos, restaura snapshot
 	@$(MAKE) qdrant-up
 	@$(MAKE) download-artifacts
 	@$(MAKE) upload-snapshot
@@ -125,13 +125,13 @@ restore-artifacts: ## [2] Caminho 2 completo: sobe Qdrant, baixa artefatos, rest
 # ──────────────────────────────────────────────────────────────────────────
 
 .PHONY: smoke
-smoke: ## [2] Roda smoke_query_qdrant.py (5 queries dense, valida pipeline)
+smoke: ## [1] Roda smoke_query_qdrant.py (5 queries dense, valida pipeline)
 	$(PYTHON) scripts/smoke_query_qdrant.py
 
 QUERY ?= o que é TUSD e como ela é calculada?
 
 .PHONY: generate
-generate: ## [2] Fase 6 - query interativa com Claude Sonnet 4.6 (requer .env com ANTHROPIC_API_KEY)
+generate: ## [1] Query interativa com Claude Sonnet 4.6 (requer .env com ANTHROPIC_API_KEY)
 	@test -f .env || (echo "ERRO: crie .env a partir de .env.example e preencha ANTHROPIC_API_KEY" && exit 1)
 	@export $$(grep -v '^#' .env | xargs) && \
 	  $(PYTHON) -m src.generate \
@@ -141,65 +141,65 @@ generate: ## [2] Fase 6 - query interativa com Claude Sonnet 4.6 (requer .env co
 	    --top-k 10
 
 # ──────────────────────────────────────────────────────────────────────────
-# Caminho 1 - pipeline completo do zero
+# Caminho 2 - pipeline completo do zero
 # ──────────────────────────────────────────────────────────────────────────
 
 .PHONY: download
-download: ## [1] Fase 1 - baixa 26.731 PDFs da ANEEL (~13 min)
+download: ## [2] Baixa 26.731 PDFs da ANEEL (~13 min)
 	$(PYTHON) scripts/download_aneel_pdfs.py \
 	  --json-dir $(JSON_DIR) \
 	  --output-dir $(PDFS_DIR) \
 	  --concurrency $(CONCURRENCY)
 
 .PHONY: analyze
-analyze: ## [1] Analise exploratoria do corpus (PyMuPDF, sem OCR)
+analyze: ## [2] Analise exploratoria do corpus (PyMuPDF, sem OCR)
 	$(PYTHON) scripts/analyze_pdfs.py \
 	  --pdfs-dir $(PDFS_DIR) \
 	  --report-json $(PDFS_DIR)/_analysis.json
 
 .PHONY: parse
-parse: ## [1] Fase 2 - extrai texto dos PDFs (~30 min em 8 cores)
+parse: ## [2] Extrai texto dos PDFs (~30 min em 8 cores)
 	$(PYTHON) -m src.parse_pdfs \
 	  --pdfs-root $(PDFS_DIR) \
 	  --out $(PARSED) \
 	  --workers $(WORKERS)
 
 .PHONY: chunk
-chunk: ## [1] Fase 3 - chunking 3-tier (~10s)
+chunk: ## [2] Chunking 3-tier (~10s)
 	$(PYTHON) -m src.chunk \
 	  --in $(PARSED) \
 	  --out $(CHUNKS)
 
 .PHONY: index
-index: ## [1] Fase 4 - embeddings bge-m3 + Qdrant + BM25 (~2h em RTX 3050)
+index: ## [2] Embeddings bge-m3 + Qdrant + BM25 (~2h em RTX 3050)
 	$(PYTHON) -m src.index \
 	  --chunks $(CHUNKS) \
 	  --bm25-out $(BM25) \
 	  --batch-size $(BATCH_SIZE)
 
 .PHONY: all
-all: download parse chunk index ## [1] Roda Fases 1-4 em sequencia (varias horas)
+all: download parse chunk index ## [2] Pipeline completo do zero (download+parse+chunk+index, varias horas)
 
 # ──────────────────────────────────────────────────────────────────────────
-# Fase 7 - Avaliacao
+# Avaliacao
 # ──────────────────────────────────────────────────────────────────────────
 
 GEN_LIMIT ?=
 
 .PHONY: golden-set
-golden-set: ## [1] Fase 7 - gera golden set (~80 questoes via Claude, ~14 min, custa tokens)
+golden-set: ## [2] Gera golden set (~80 questoes via Claude, ~14 min, custa tokens)
 	@test -f .env || (echo "ERRO: crie .env a partir de .env.example e preencha ANTHROPIC_API_KEY" && exit 1)
 	@export $$(grep -v '^#' .env | xargs) && \
 	  $(PYTHON) -m eval.generate_golden_set
 
 .PHONY: evaluate
-evaluate: ## [2] Fase 7 - so retrieval (rapido, sem custo de API): hit@k, MRR
+evaluate: ## [1] Avaliacao so retrieval (rapido, sem custo de API): hit@k, MRR
 	$(PYTHON) -m eval.evaluate \
 	  --bm25-path $(BM25) \
 	  --qdrant-url $(QDRANT_URL)
 
 .PHONY: evaluate-full
-evaluate-full: ## [2] Fase 7 - retrieval + geracao + LLM eval (~30 min, custa tokens)
+evaluate-full: ## [1] Avaliacao retrieval + geracao + LLM eval (~30 min, custa tokens)
 	@test -f .env || (echo "ERRO: crie .env a partir de .env.example e preencha ANTHROPIC_API_KEY" && exit 1)
 	@export $$(grep -v '^#' .env | xargs) && \
 	  $(PYTHON) -m eval.evaluate \

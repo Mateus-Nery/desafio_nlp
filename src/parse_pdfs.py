@@ -1,6 +1,6 @@
 """Parser ANEEL — PDF → parsed.jsonl
 
-Pipeline (Fase 2 do RAG):
+Pipeline:
   PDF → blocos ordenados (multi-coluna) → tabelas semânticas em Markdown
       → headers/footers removidos (regex + heurística repetição)
       → numeração solta joinada → footnotes extraídas

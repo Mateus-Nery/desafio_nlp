@@ -1,5 +1,5 @@
 """
-eval/generate_golden_set.py — Geração do golden set para avaliação RAG (Fase 7)
+eval/generate_golden_set.py — Geração do golden set para avaliação RAG
 
 Lê artifacts/chunks.jsonl, amostra chunks de forma estratificada por
 tipo_query (factual / conceptual / comparative / multi_hop / negative),
@@ -60,7 +60,7 @@ TARGET = {
 # Sobreamostragem para compensar falhas/baixa qualidade
 OVERSAMPLE = 2.0
 
-# Modelo — mesmo que o LLM gerador da Fase 6
+# Modelo — mesmo que o LLM gerador (src/generate.py)
 MODEL = "claude-sonnet-4-6"
 
 # Janela de text enviada ao LLM (chars) — evita tokens caros em chunks grandes
@@ -222,7 +222,7 @@ def _text(c: dict) -> str:
 
 SYSTEM_PROMPT = (
     "Você é especialista em regulação do setor elétrico brasileiro. "
-    "Gera perguntas e respostas no estilo de um examinador rigoroso, "
+    "Gera perguntas e respostas no estilo de um avaliador rigoroso, "
     "sem inventar informações além do que está no texto fornecido. "
     "Responda SEMPRE com JSON válido puro, sem markdown, sem ```json."
 )
@@ -503,7 +503,7 @@ def trim_to_target(results: list[dict], target: dict[str, int]) -> list[dict]:
 def main() -> None:
     _load_dotenv()
 
-    parser = argparse.ArgumentParser(description="Gera golden set para avaliação RAG (Fase 7)")
+    parser = argparse.ArgumentParser(description="Gera golden set para avaliação RAG")
     parser.add_argument("--chunks", default=str(CHUNKS_PATH), help="Caminho para chunks.jsonl")
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="Saída: golden_set.jsonl")
     parser.add_argument("--raw-out", default=str(DEFAULT_RAW), help="Saída bruta com chunk_text_ref")

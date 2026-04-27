@@ -1,7 +1,5 @@
 """Retrieval híbrido ANEEL — query → top-K chunks com RRF de dense + BM25.
 
-Fase 5 do RAG:
-
   query
     │
     ├──▶ embed dense (bge-m3, 1024-dim)
@@ -14,7 +12,7 @@ Fase 5 do RAG:
 Filtros opcionais por payload: tipo_ato, year, tier (aplicados em ambos os
 retrievers — Qdrant via query_filter, BM25 via numpy mask).
 
-Decisões (ver HANDOFF.md):
+Decisões:
   - 2 listas (dense + BM25). Sparse do bge-m3 fica como flag opcional.
   - Queries paralelas com ThreadPoolExecutor; RRF manual no cliente.
   - Autodetect device: CUDA → CPU (pula MPS por default).

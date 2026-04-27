@@ -1,5 +1,5 @@
 """
-eval/evaluate.py — Avaliação end-to-end do pipeline RAG (Fase 7)
+eval/evaluate.py — Avaliação end-to-end do pipeline RAG
 
 Métricas calculadas:
   Retrieval  (todos os tipos exceto 'negative'):
@@ -206,7 +206,7 @@ def run_llm_eval(samples: list[dict], anthropic_client: Any) -> dict:
 def main() -> None:
     _load_dotenv()
 
-    ap = argparse.ArgumentParser(description="Avaliação end-to-end do pipeline RAG (Fase 7)")
+    ap = argparse.ArgumentParser(description="Avaliação end-to-end do pipeline RAG")
     ap.add_argument("--golden-set", default=str(GOLDEN_SET_PATH))
     ap.add_argument("--results-out", default=str(RESULTS_PATH))
     ap.add_argument("--summary-out", default=str(SUMMARY_PATH))

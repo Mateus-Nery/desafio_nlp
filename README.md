@@ -2,146 +2,88 @@
 
 Sistema RAG (Retrieval-Augmented Generation) sobre a biblioteca legislativa da
 ANEEL — Agência Nacional de Energia Elétrica. Cobre **26.731 PDFs** dos anos
-2016, 2021 e 2022, totalizando ~117 mil páginas e ~53 milhões de tokens de
+2016, 2021 e 2022, totalizando ~117 mil páginas e ~54 milhões de tokens de
 legislação do setor elétrico brasileiro.
 
-> **Status atual:** Fases 1-7 **concluídas** (ingestão, parser, chunking,
-> indexação, retrieval, geração, avaliação) com métricas validadas. 
-> [GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0)
-> publicada com snapshot pré-indexado pronto para uso. Fase 8 (serving) é opcional.
+Snapshot pré-indexado disponível em
+[GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0)
+— restaurável em ~14 s via `make restore-artifacts`.
 
 ---
 
 ## Sumário
 
-1. [Visão Geral & Objetivo](#visão-geral--objetivo)
-2. [Arquitetura Completa](#arquitetura-completa)
-3. [Stack Tecnológica](#stack-tecnológica)
-4. [Estrutura do Repositório](#estrutura-do-repositório)
-5. [Como Rodar — 3 Caminhos](#como-rodar--3-caminhos)
-6. [Fases do Pipeline](#fases-do-pipeline)
-7. [Replicabilidade](#replicabilidade)
-8. [Avaliação & Golden Set](#avaliação--golden-set)
-9. [Análise do Corpus](#análise-do-corpus)
-10. [Decisões de Arquitetura](#decisões-de-arquitetura)
-11. [Roadmap](#roadmap)
+1. [Arquitetura](#arquitetura)
+2. [Stack Tecnológica](#stack-tecnológica)
+3. [Estrutura do Repositório](#estrutura-do-repositório)
+4. [Como Rodar](#como-rodar)
+5. [Pipeline](#pipeline)
+6. [Avaliação](#avaliação)
+7. [Análise do Corpus](#análise-do-corpus)
+8. [Decisões de Arquitetura](#decisões-de-arquitetura)
 
 ---
 
-## Visão Geral & Objetivo
-
-Construir um sistema RAG completo capaz de responder perguntas sobre legislação
-ANEEL com **qualidade alta** e **replicabilidade total** — examinador deve
-conseguir clonar o repo e ter o sistema funcionando sem dor.
-
-**Princípios diretores:**
-
-1. **Qualidade não é negociável** — modelos SOTA (bge-m3, Claude Sonnet,
-   bge-reranker-v2-m3), sem fallbacks degradados.
-2. **Replicabilidade é como entregamos**, não o que cortamos — Docker,
-   versões pinadas, snapshots pré-construídos, smoke test rápido.
-3. **Robustez** — pipeline idempotente, retomável, com retries em todas as
-   camadas que tocam rede.
-4. **Decisões fundamentadas em dados** — análise empírica do corpus
-   (n=26.731) informa cada escolha (chunking, parser, etc.), não chutes.
-
----
-
-## Arquitetura Completa
+## Arquitetura
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 1 — INGESTÃO (✅ concluída)                                │
-│     3 JSONs ANEEL  →  download_aneel_pdfs.py  →  pdfs_aneel/     │
-│     • curl_cffi (bypass Cloudflare via TLS impersonation)        │
-│     • asyncio + semaphore (concorrência 8)                       │
-│     • Retries c/ backoff + manifest JSONL idempotente            │
-│     • Output: 26.731 PDFs, 4.04 GB                                │
-└──────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 2 — PARSER (✅ concluída)                                  │
-│     PDFs → PyMuPDF → parsed.jsonl (1 doc por linha)              │
-│     • Texto limpo (strip headers, FL X de Y, hífens)             │
-│     • Tabelas via page.find_tables() → markdown                  │
-│     • Detecção e preservação de hierarquia (Art./§/Inciso)       │
-│     • Output: 26.731 docs, 54,4 M tokens, 39.390 tabelas         │
-└──────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 3 — CHUNKING 3-TIER (✅ concluída)                         │
-│     Tier A → split por Art./Anexo  (REN, REH, RES, NDSP…)        │
-│     Tier B → parágrafo + merge ~500 tok  (AREA, REA, PRT…)       │
-│     Tier C → 1 PDF = 1 chunk         (DSP curto, ECT, AVS…)      │
-│     Output: 160.267 chunks (A=98.7k, B=50.0k, C=11.5k)           │
-└──────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 4 — INDEXAÇÃO (✅ concluída)                               │
-│     • Dense embeddings: BAAI/bge-m3 (1024-dim, multilingual)     │
-│     • Sparse (lexical): bge-m3 sparse + BM25 (rank_bm25)         │
-│     • Vector store: Qdrant 1.12.4 (docker), payload indexado     │
-│     • Metadata fields: tipo_ato, year, tier, doc_id              │
-│     • Snapshot público: GitHub Release v0.4.0 (1,46 GB total)    │
-└──────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 5 — RETRIEVAL (✅ concluída)                               │
-│     query  →  embed (bge-m3)                                     │
-│            →  [dense top-30] + [BM25 top-30]                     │
-│            →  RRF fusion (k=60)                                   │
-│            →  bge-reranker-v2-m3  →  top-10                      │
-│            →  filtros opcionais por metadata (tipo_ato, year)    │
-└──────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 6 — GERAÇÃO (✅ concluída)                                 │
-│     Claude Sonnet 4.6 (API) com prompt caching (ephemeral)       │
-│     Enforça citações inline [N], fallback anti-alucinação        │
-│     Output: GenerationResult com answer + citations[] estruturado│
-└──────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 7 — AVALIAÇÃO (✅ concluída)                               │
-│     Golden set: 79 questões (factual, conceitual, comparativa,   │
-│     multi-hop, negativas)                                         │
-│     Métricas retrieval: hit@5=0.7101, hit@10=0.7246,             │
-│                        hit@20=0.8116, MRR=0.619                 │
-│     Latency: p50=3s, p95=21.9s (with generation)                 │
-└──────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  FASE 8 — SERVING (opcional, se houver tempo)                    │
-│     FastAPI /query endpoint + Streamlit UI demo                  │
-└──────────────────────────────────────────────────────────────────┘
+                    ┌─────────────────┐
+                    │   3 JSONs ANEEL │
+                    └────────┬────────┘
+                             │  download_aneel_pdfs.py (curl_cffi + asyncio)
+                             ▼
+                    ┌─────────────────┐
+                    │   26.731 PDFs   │
+                    └────────┬────────┘
+                             │  parse_pdfs.py (PyMuPDF + cleaning)
+                             ▼
+                    ┌─────────────────┐
+                    │  parsed.jsonl   │  54,4 M tokens, 39.390 tabelas
+                    └────────┬────────┘
+                             │  chunk.py (3-tier data-driven, hard cap 1500 tok)
+                             ▼
+                    ┌─────────────────┐
+                    │ 160.267 chunks  │  Tier A 61% / B 31% / C 7%
+                    └────────┬────────┘
+                             │  index.py (bge-m3 + Qdrant + BM25)
+                             ▼
+                    ┌─────────────────┐
+                    │  Qdrant + BM25  │
+                    └────────┬────────┘
+                             │
+                             ▼
+        query  ──▶  embed (bge-m3 1024-dim)
+                             │
+                             ├──▶ Qdrant dense top-30 ┐
+                             │                        │  RRF (k=60)
+                             └──▶ BM25 top-30  ───────┘   (paralelo)
+                                              │
+                                              ▼
+                             bge-reranker-v2-m3  →  top-10
+                                              │
+                                              ▼
+                             Claude Sonnet 4.6 (prompt caching, citações [N])
+                                              │
+                                              ▼
+                                          resposta
 ```
 
 ---
 
 ## Stack Tecnológica
 
-| Camada | Tecnologia | Versão alvo | Justificativa |
-|---|---|---|---|
-| Linguagem | Python | 3.11+ | Ecossistema NLP/RAG |
-| HTTP (Fase 1) | `curl_cffi` | 0.7+ | TLS impersonation Chrome para bypass de Cloudflare Bot Management |
-| Async | `asyncio` + semaphore | stdlib | Concorrência controlada de downloads |
-| PDF parsing | `PyMuPDF` (`fitz`) | 1.27+ | Validado em 26.731 PDFs sem erros, suporta `find_tables()` |
-| Embeddings | `BAAI/bge-m3` | latest | SOTA multilingual; gera dense+sparse+colbert num passe; forte em PT-BR |
-| Vector store | **Qdrant** (Docker) | 1.10+ | Hybrid search nativo, filtros por payload, snapshots restauráveis |
-| Sparse search | `rank_bm25` | 0.2+ | Pure Python, complementa bge-m3 sparse |
-| Reranker | `BAAI/bge-reranker-v2-m3` | latest | Padrão da indústria, ganho de qualidade significativo |
-| LLM gerador | **Claude Sonnet 4.6** (API) | claude-sonnet-4-6 | Excelente em PT-BR jurídico, citações confiáveis, contexto longo |
-| Avaliação | golden set custom + LLM-as-judge (Claude Haiku) | — | hit@k/MRR + faithfulness/answer_relevance via Claude (Ragas 0.2 API quebrada) |
-| API | `FastAPI` | 0.115+ | (opcional, Fase 8) demo |
-| UI | `Streamlit` | 1.40+ | (opcional, Fase 8) demo |
-| Infra | Docker Compose | 2.20+ | Sobe Qdrant + app com 1 comando |
+| Camada | Tecnologia | Justificativa |
+|---|---|---|
+| Linguagem | Python 3.11+ | Ecossistema NLP/RAG |
+| HTTP (download) | `curl_cffi` | TLS impersonation Chrome para bypass de Cloudflare |
+| PDF parsing | `PyMuPDF` (`fitz`) | Validado em 26.731 PDFs sem erros, suporta `find_tables()` |
+| Embeddings | `BAAI/bge-m3` (1024-dim) | SOTA multilingual; gera dense+sparse num passe; forte em PT-BR |
+| Vector store | **Qdrant** (Docker) | Hybrid search nativo, filtros por payload, snapshots restauráveis |
+| Sparse search | `rank_bm25` | Pure Python, IDF do corpus complementa dense |
+| Reranker | `BAAI/bge-reranker-v2-m3` | Cross-encoder padrão da indústria |
+| LLM gerador | **Claude Sonnet 4.6** (API) | PT-BR jurídico, citações confiáveis, prompt caching |
+| Avaliação | golden set + LLM-as-judge (Claude Haiku) | hit@k/MRR + faithfulness/answer_relevance |
+| Infra | Docker Compose | Sobe Qdrant com 1 comando |
 
 ---
 
@@ -149,113 +91,93 @@ conseguir clonar o repo e ter o sistema funcionando sem dor.
 
 ```
 desafio_nlp/
-├── README.md                          ← este arquivo
-├── HANDOFF.md                         ← estado WIP (multi-Claude)
-├── CHANGELOG.md                       ← histórico append-only
-├── CLAUDE.md                          ← instruções p/ colaboradores Claude
-├── requirements.txt                   ← versões pinadas
-├── docker-compose.yml                 ← Qdrant
-├── Makefile                           ← orquestração de tarefas (3 caminhos)
-├── .env.example                       ← template de variáveis
-├── .gitignore
+├── README.md
+├── requirements.txt              ← deps pinadas
+├── docker-compose.yml            ← Qdrant
+├── Makefile                      ← orquestração (3 caminhos)
+├── .env.example                  ← template de variáveis
 │
-├── data/
-│   ├── dados_grupo_estudos/           ← 3 JSONs ANEEL (entrada, gitignored)
-│   └── pdfs_aneel/                    ← 26.731 PDFs + manifests (gitignored)
-│       ├── 2016/*.pdf
-│       ├── 2021/*.pdf
-│       ├── 2022/*.pdf
-│       ├── _manifest.jsonl
-│       ├── _failures.jsonl
-│       ├── _summary.json
-│       └── _analysis.json             ← saída de analyze_pdfs.py
+├── data/                         (gitignored)
+│   ├── dados_grupo_estudos/      ← 3 JSONs ANEEL (entrada)
+│   └── pdfs_aneel/               ← 26.731 PDFs + manifests
 │
-├── artifacts/                         ← gerados pelo pipeline (gitignored)
-│   ├── parsed.jsonl                   ← Fase 2 (1 linha por doc)
-│   ├── chunks.jsonl                   ← Fase 3 (1 linha por chunk)
-│   ├── qdrant_snapshot.tar            ← Fase 4 (snapshot Qdrant)
-│   ├── bm25_index.pkl                 ← Fase 4 (BM25 serializado)
-│   └── manifest.json                  ← versões + hashes
+├── artifacts/                    (gitignored, publicado via Release)
+│   ├── parsed.jsonl              ← saída do parser
+│   ├── chunks.jsonl              ← saída do chunker
+│   ├── qdrant_snapshot.tar       ← snapshot do Qdrant
+│   ├── bm25_index.pkl            ← BM25 serializado
+│   └── manifest.json             ← versões + hashes
 │
 ├── src/
-│   ├── __init__.py
-│   ├── parse_pdfs.py                  ← Fase 2 (PyMuPDF + cleaning)
-│   ├── chunk.py                       ← Fase 3 (3-tier data-driven)
-│   ├── index.py                       ← Fase 4 (embeddings + Qdrant + BM25)
-│   ├── retrieve.py                    ← Fase 5 (hybrid + RRF + rerank)
-│   └── generate.py                    ← Fase 6 (Claude + prompt + citações)
+│   ├── parse_pdfs.py             ← PyMuPDF + cleaning + estrutura
+│   ├── chunk.py                  ← chunking 3-tier
+│   ├── index.py                  ← embeddings + Qdrant + BM25
+│   ├── retrieve.py               ← hybrid + RRF + rerank
+│   └── generate.py               ← Claude + prompt + citações
 │
-├── eval/                              ← Fase 7 (avaliação RAG)
-│   ├── __init__.py
-│   ├── generate_golden_set.py         ← gera golden set via Claude
-│   ├── evaluate.py                    ← métricas hit@k/MRR + LLM eval
-│   ├── golden_set.jsonl               ← 79 perguntas estratificadas (versionado)
-│   ├── golden_set_raw.jsonl           ← versão com refs p/ revisão humana
-│   ├── eval_results*.jsonl            ← resultados por questão (gitignored)
-│   └── eval_summary*.json             ← métricas agregadas (gitignored)
+├── eval/
+│   ├── generate_golden_set.py    ← gera golden set via Claude
+│   ├── evaluate.py               ← métricas hit@k/MRR + LLM eval
+│   └── golden_set.jsonl          ← 79 questões estratificadas
 │
-└── scripts/                           ← scripts standalone
-    ├── download_aneel_pdfs.py         ← Fase 1 — download dos PDFs
-    ├── analyze_pdfs.py                ← análise exploratória do corpus
-    ├── explore_pdfs.py                ← extrai amostras p/ inspeção manual
-    └── smoke_query_qdrant.py          ← Caminho 3 — smoke test rápido
+└── scripts/
+    ├── download_aneel_pdfs.py    ← download dos PDFs
+    ├── analyze_pdfs.py           ← análise exploratória do corpus
+    ├── explore_pdfs.py           ← extrai amostras p/ inspeção
+    └── smoke_query_qdrant.py     ← smoke test rápido
 ```
 
 ---
 
-## Como Rodar — 3 Caminhos
+## Como Rodar
 
-### Pré-requisitos comuns
+### Pré-requisitos
 
 - Python 3.11+ (3.10 também funciona)
 - Docker + Docker Compose
-- **GNU Make** — usado como atalho pros comandos. Instalação:
+- **GNU Make** (atalhos):
   - Linux: já vem (`apt install make` se faltar)
   - macOS: `brew install make` (ou já vem com Xcode CLT)
-  - Windows: `choco install make` ou `scoop install make`. Alternativa: o Git for Windows já traz `mingw32-make` (sintaxe idêntica)
-  - Quem prefere não instalar make: cada target tem o equivalente raw na seção [Fases do Pipeline](#fases-do-pipeline)
+  - Windows: `choco install make` / `scoop install make` / `mingw32-make` (Git for Windows)
 - (opcional) GPU CUDA ou Apple MPS — autodetectada
-- ~5 GB livres em disco para o Caminho 2 (modelo bge-m3 + snapshot + Qdrant volume)
-- ~10 GB livres em disco para o Caminho 1 (acima + 4 GB de PDFs)
+- ~5 GB livres para o Caminho 1 (modelo bge-m3 + snapshot + Qdrant volume)
+- ~10 GB livres para o Caminho 2 (acima + 4 GB de PDFs)
 
-### Setup inicial (todos os caminhos)
+### Setup inicial
 
 ```bash
 git clone https://github.com/Mateus-Nery/desafio_nlp.git
 cd desafio_nlp
 
-# Cria venv
 python -m venv .venv
 source .venv/bin/activate         # Windows: .venv\Scripts\activate
 
-# (opcional, mas recomendado se tem GPU NVIDIA no Windows)
-# Sem isso o pip install vem com torch CPU-only e a Fase 4 fica 4-6 h em vez de 2 h
+# (opcional, recomendado em Windows com GPU NVIDIA — sem isso o pip vem com torch CPU-only)
 pip install torch --index-url https://download.pytorch.org/whl/cu124
 
 pip install -r requirements.txt
 
-# Copia template de env e adiciona sua chave Claude (necessária só pra Fase 6)
+# Chave Claude (necessária só para geração)
 cp .env.example .env
 # editar .env: ANTHROPIC_API_KEY=sk-ant-...
 
-# Sobe Qdrant em localhost:6333 (volume persistente)
 docker compose up -d
 ```
 
-### Caminho 2 — Bootstrap com snapshot pré-construído ⚡ (recomendado)
+### Caminho 1 — Snapshot pré-construído ⚡ (recomendado)
 
-Pula a parte cara restaurando os artefatos pré-computados publicados como
+Restaura os artefatos pré-computados publicados como
 [GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0).
-**Esse caminho é autossuficiente** — o examinador *não* precisa baixar os
-4 GB de PDFs nem rodar parser/chunker. Só Qdrant + BM25 + código + chave
-Claude bastam para responder qualquer query.
+**Não precisa baixar os 4 GB de PDFs nem rodar parser/chunker.**
 
 ```bash
-make restore-artifacts   # sobe Qdrant, baixa snapshot+bm25+manifest da Release, restaura (~5-10 min)
+make restore-artifacts   # sobe Qdrant, baixa snapshot+bm25+manifest, restaura (~5-10 min)
 make smoke               # 5 queries dense, valida que retrieval responde
-make evaluate            # (opcional) métricas de retrieval em 79 questões do golden set
-make generate QUERY="o que é TUSD?"  # (opcional) requer .env com ANTHROPIC_API_KEY
 ```
+
+Pronto — agora dá pra fazer queries (ver [Fazendo uma query](#fazendo-uma-query)
+abaixo). `make evaluate` reporta as métricas em 79 questões do golden set
+(opcional, ~3 min, sem custo de API).
 
 Equivalente raw bash (sem make):
 
@@ -273,50 +195,44 @@ curl -X POST 'http://localhost:6333/collections/aneel_chunks/snapshots/upload?pr
 python scripts/smoke_query_qdrant.py
 ```
 
-**O que tem na Release v0.4.0:**
+**Conteúdo da Release v0.4.0:**
 
-| Arquivo | Tamanho | Obrigatório? | Para quê |
-|---|---|---|---|
-| `qdrant_snapshot.tar` | 1,22 GB | ✅ sim | Coleção `aneel_chunks` com 160.267 pontos: dense (bge-m3 1024-dim cosine) + sparse (lexical_weights), payload com texto cru e metadados |
-| `bm25_index.pkl` | 244 MB | ✅ sim | Índice BM25 Okapi serializado, tokenizer regex `\w+` lowercase |
-| `manifest.json` | 1,8 KB | ✅ sim | Versões dos modelos + SHA-256 dos artefatos |
+| Arquivo | Tamanho | Para quê |
+|---|---|---|
+| `qdrant_snapshot.tar` | 1,22 GB | Coleção `aneel_chunks` com 160.267 pontos: dense (bge-m3 1024-dim cosine) + sparse (lexical_weights), payload com texto cru e metadados |
+| `bm25_index.pkl` | 244 MB | Índice BM25 Okapi serializado, tokenizer regex `\w+` lowercase |
+| `manifest.json` | 1,8 KB | Versões dos modelos + SHA-256 dos artefatos |
 
-**Por que isso é autossuficiente:** o `src/index.py` armazena o texto cru
-de cada chunk dentro do payload do Qdrant (e do BM25 pickle). Quando o
-retrieval traz um chunk, ele já vem com `text`, `url`, `tipo_ato`, etc.
-inline — não há lookup posterior em arquivos locais.
+**Por que é autossuficiente:** o `src/index.py` armazena o texto cru de cada
+chunk dentro do payload do Qdrant (e do BM25 pickle). Quando o retrieval
+traz um chunk, ele já vem com `text`, `url`, `tipo_ato`, etc. inline — sem
+lookup posterior em arquivos locais.
 
-**O que ainda precisa baixar automaticamente na primeira query** (uma vez só):
-
-- `BAAI/bge-m3` (~2 GB) do HuggingFace, cacheado em `~/.cache/huggingface/`.
-  Necessário porque o examinador precisa **embedar a query nova** dele com o
-  mesmo modelo usado para indexar. Demora ~2-3 min no primeiro uso, depois
-  é instantâneo. Para acelerar, pode ser pré-baixado com:
-  `python -c "from FlagEmbedding import BGEM3FlagModel; BGEM3FlagModel('BAAI/bge-m3')"`.
-
-### Caminho 1 — Tudo do zero (fiel ao código)
-
-Reproduz **todas as fases** do zero a partir dos 3 JSONs ANEEL. Lento mas
-total. Útil pra examinador rigoroso que quer validar a reprodutibilidade.
-
+**O que ainda baixa automaticamente na primeira query** (uma vez só):
+`BAAI/bge-m3` (~2 GB) do HuggingFace, cacheado em `~/.cache/huggingface/`.
+Para acelerar, pode ser pré-baixado:
 ```bash
-make all   # download + parse + chunk + index, em sequência (~3-4 horas total)
-
-# ou fase por fase, pra checar cada saída:
-make download    # Fase 1 — baixa 26.731 PDFs da ANEEL (~13 min)
-make analyze     # análise exploratória do corpus (opcional)
-make parse       # Fase 2 — extrai texto dos PDFs (~30 min em 8 cores)
-make chunk       # Fase 3 — chunking 3-tier (~10 s)
-make index       # Fase 4 — embeddings + Qdrant + BM25 (~2 h em RTX 3050)
+python -c "from FlagEmbedding import BGEM3FlagModel; BGEM3FlagModel('BAAI/bge-m3')"
 ```
 
-Equivalente raw bash em [Fases do Pipeline](#fases-do-pipeline) — cada
-fase tem o `python -m src.<modulo>` ou `python scripts/<arquivo>.py`
-documentado.
+### Caminho 2 — Pipeline completo do zero
 
-**Tempos esperados na Fase 4** (a mais cara — 160.267 chunks bge-m3):
+Reproduz **toda a indexação** a partir dos 3 JSONs ANEEL.
 
-| Hardware | Indexação dense+sparse |
+```bash
+make all   # download + parse + chunk + index, em sequência (~3-4 horas)
+
+# ou fase por fase, pra checar cada saída:
+make download    # baixa 26.731 PDFs (~13 min)
+make analyze     # análise exploratória do corpus (opcional)
+make parse       # extrai texto dos PDFs (~30 min em 8 cores)
+make chunk       # chunking 3-tier (~10 s)
+make index       # embeddings + Qdrant + BM25 (~2 h em RTX 3050)
+```
+
+**Tempos esperados na indexação** (parte mais cara — 160.267 chunks bge-m3):
+
+| Hardware | Tempo |
 |---|---|
 | GPU desktop (RTX 3080+) | 30-60 min |
 | GPU A100 | 10-15 min |
@@ -324,37 +240,115 @@ documentado.
 | CPU 8-core (batched, FP16) | 1-3 h |
 | CPU 4-core | 4-6 h |
 
-### Caminho 3 — Smoke test rápido
+### Fazendo uma query
 
-Valida que tudo está corretamente instalado e responde. Pré-requisito:
-Caminho 2 já restaurou o snapshot.
+Pré-requisito: Caminho 1 ou 2 já populou o Qdrant (`make restore-artifacts` ou
+`make all`).
+
+#### Modo 1 — Resposta completa com citações (Claude Sonnet 4.6)
+
+Requer `ANTHROPIC_API_KEY` no `.env`. Roda o pipeline inteiro (retrieval +
+rerank + LLM) e devolve uma resposta em PT-BR com citações inline `[N]`.
+
+```bash
+make generate QUERY="o que é TUSD e como ela é calculada?"
+```
+
+Equivalente raw (sem make):
+
+```bash
+python -m src.generate --query "o que é TUSD e como ela é calculada?"
+```
+
+**Output esperado** (streaming, depois fontes e métricas):
+
+```
+A TUSD (Tarifa de Uso do Sistema de Distribuição) é a tarifa que remunera
+o uso da rede de distribuição pelos consumidores [1]. Ela é calculada com
+base na potência contratada e no nível de tensão de fornecimento, conforme
+estabelece o Art. 13 da REH 2.914/2021 [2].
+
+────────────────────────────────────────────────────────────────────────
+FONTES
+────────────────────────────────────────────────────────────────────────
+[1] RESOLUÇÃO NORMATIVA ANEEL Nº 1.000 — Art. 5º
+    https://www2.aneel.gov.br/cedoc/ren20221000.pdf
+[2] RESOLUÇÃO HOMOLOGATÓRIA Nº 2.914 — Art. 13
+    https://www2.aneel.gov.br/cedoc/reh20212914.pdf
+────────────────────────────────────────────────────────────────────────
+Tokens: 4280 entrada (312 cache) · 310 saída · 3214 ms
+```
+
+Flags úteis:
+
+```bash
+# Filtrar por tipo de ato e ano
+python -m src.generate --query "..." --tipo-ato ren --year 2022 --top-k 8
+
+# Saída JSON estruturada (sem streaming)
+python -m src.generate --query "..." --json --no-stream > result.json
+
+# Sem reranker (mais rápido em CPU, qualidade um pouco menor)
+python -m src.generate --query "..." --no-rerank
+```
+
+#### Modo 2 — Apenas retrieval (sem custo de API)
+
+Mostra os top-K chunks recuperados com scores, sem chamar Claude. Útil pra
+debug e pra usuários sem chave Anthropic.
+
+```bash
+python -m src.retrieve --query "tarifa de uso do sistema de distribuição"
+```
+
+**Output esperado:**
+
+```
+10 resultados em 2922ms para query: 'tarifa de uso do sistema de distribuição'
+
+1. [rrf=0.0325  dense=#1  bm25=#2]  NREN 2016  tier=A
+   ANEXO II  |  doc=2016/nren2016704
+   url: https://www2.aneel.gov.br/cedoc/nren2016704.pdf
+   ...respectivas Tarifas de Uso do Sistema de Distribuição (TUSD) vigentes
+   na DRP, conforme a fórmula abaixo: CSDDRP = ∑(MUSDP × TUSDP + ...
+
+2. [rrf=0.0257  dense=#22  bm25=#14]  NREH 2021  tier=B
+   ...
+```
+
+Flags úteis:
+
+```bash
+python -m src.retrieve --query "..." --top-k 5 --tipo-ato ren --year 2022
+python -m src.retrieve --query "..." --no-rerank --json
+python -m src.retrieve --query "..." --device cpu   # força CPU (default: autodetect)
+```
+
+#### Modo 3 — Smoke test (validação rápida)
+
+Roda 5 queries pré-definidas para validar que o pipeline está respondendo.
+Não usa LLM nem reranker — só dense search no Qdrant.
 
 ```bash
 make smoke
 ```
 
 Equivale a `python scripts/smoke_query_qdrant.py`. Saída esperada: top-3
-coerente para "TUSD", "prazo de ligação", "microgeração distribuída", etc.
-Tempo total: ~20 s (incluindo carga do bge-m3 do cache, ~3 s).
-
-### Query interativa
-
-> Disponível após Fase 5/6 (ver Roadmap). Hoje, a forma de inspecionar
-> resultados é via `scripts/smoke_query_qdrant.py` ou consultando o Qdrant
-> diretamente via REST/dashboard em `http://localhost:6333/dashboard`.
+coerente para "TUSD", "prazo de ligação", "microgeração distribuída",
+"penalidade por descumprimento" e "geração distribuída". Tempo total: ~20 s.
 
 ---
 
-## Fases do Pipeline
+## Pipeline
 
-### Fase 1 — Ingestão (✅ concluída)
+### Ingestão (download)
 
 Script: [`scripts/download_aneel_pdfs.py`](scripts/download_aneel_pdfs.py)
 
 Lê 3 JSONs de metadados ANEEL, deduplica URLs, baixa todos os PDFs com:
 
 - Concorrência controlada (asyncio + semaphore, default 8)
-- Retries com backoff exponencial e jitter (até 5x)
+- Retries com backoff exponencial e jitter (até 5×)
 - Validação de magic number (`%PDF-`) e SHA-256
 - Manifest JSONL para retomada idempotente
 - Falhas separadas em `_failures.jsonl` para reexecução
@@ -362,21 +356,10 @@ Lê 3 JSONs de metadados ANEEL, deduplica URLs, baixa todos os PDFs com:
 
 > **Por que `curl_cffi`?** O servidor `www2.aneel.gov.br/cedoc/` está atrás de
 > Cloudflare Bot Management, que bloqueia requisições com base em fingerprint
-> TLS (JA3) — `httpx` puro retorna 403 mesmo com User-Agent de browser. O
-> `curl_cffi` reproduz o handshake TLS do Chrome real e passa pelo bloqueio.
+> TLS (JA3) — `httpx` puro retorna 403 mesmo com User-Agent de browser.
+> O `curl_cffi` reproduz o handshake TLS do Chrome real e passa pelo bloqueio.
 
-**Resultado:**
-
-| Métrica | Valor |
-|---|---|
-| URLs únicas (após dedup) | 26.768 |
-| Não-PDFs filtrados (HTML/ZIP/XLSX) | 254 |
-| Baixados com sucesso | **26.731 (99,82%)** |
-| Falhas | 47 (43× HTTP 404 reais + 4× URL malformada) |
-| Tamanho em disco | 4,04 GB |
-| Duração | ~13 min @ 30-40 PDFs/s |
-
-#### Comando
+**Resultado:** 26.731 / 26.768 URLs únicas (99,82%), 4,04 GB, ~13 min @ 30-40 PDFs/s.
 
 ```bash
 python scripts/download_aneel_pdfs.py \
@@ -385,280 +368,105 @@ python scripts/download_aneel_pdfs.py \
     --concurrency 8
 ```
 
-#### Flags úteis
-
-| Flag | Default | Descrição |
-|---|---|---|
-| `--json-dir` | obrigatório | Pasta com os 3 JSONs |
-| `--output-dir` | obrigatório | Destino dos PDFs |
-| `--concurrency` | 8 | Downloads simultâneos |
-| `--max-retries` | 5 | Tentativas por URL |
-| `--dry-run` | off | Conta sem baixar |
-| `--only-year` | — | Limita a 2016, 2021 ou 2022 |
-| `--max-downloads` | — | Limita N downloads (smoke test) |
-| `--sample-fraction` | — | Fração `(0,1]`, estratificada por ano+tipo |
-| `--sample-seed` | 42 | Seed da amostra |
-
-#### Saídas
-
-```
-data/pdfs_aneel/
-├── 2016/*.pdf
-├── 2021/*.pdf
-├── 2022/*.pdf
-├── _manifest.jsonl    ← 1 linha JSON por download bem-sucedido
-├── _failures.jsonl    ← URLs que esgotaram retries
-├── _errors.log        ← log detalhado de retries
-└── _summary.json      ← resumo final do run
-```
-
-#### Comportamento de retries
-
-- **Retryable** (com backoff): 403 (CF transiente), 408, 425, 429, 5xx,
-  timeouts, connection errors, magic inválido
-- **Não-retryable** (vai pra failures): 400, 401, 404, 410, 451
-- **Retry-After** respeitado em 429/503 (até teto de 60s)
-
-#### Politeness
-
-- User-Agent de Chrome real (necessário pra passar pelo CF)
-- Delay de 100ms após cada download bem-sucedido
-- Concorrência conservadora (servidor ANEEL é legado)
-- HTTP automaticamente promovido a HTTPS
+Flags úteis: `--max-retries`, `--dry-run`, `--only-year`, `--max-downloads`,
+`--sample-fraction`, `--sample-seed`. Saídas: `_manifest.jsonl`,
+`_failures.jsonl`, `_errors.log`, `_summary.json`.
 
 ---
 
-### Fase 2 — Parser (✅ concluída)
+### Parser
 
 Módulo: `src/parse_pdfs.py`
 
 Lê todos os PDFs em `data/pdfs_aneel/` e gera `artifacts/parsed.jsonl` —
-1 linha JSON por documento. Schema:
+1 linha JSON por documento, com texto limpo, estrutura hierárquica, tabelas
+e footnotes.
+
+**Schema:**
 
 ```json
 {
   "doc_id": "2022/ren20221008",
   "tipo_ato": "ren",
   "year": 2022,
-  "filename": "ren20221008.pdf",
   "title": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.008, DE 15 DE MARÇO DE 2022",
   "ementa": "Dispõe sobre a Conta Escassez Hídrica...",
   "processo": "48500.006312/2021-55",
   "n_pages": 22, "n_chars": 12090, "n_tokens_est": 3267,
   "is_ocr_suspect": false,
-  "pdf_creator": "Microsoft® Word para Microsoft 365",
   "text": "...full cleaned text...",
   "structure": [
-    {"type": "capitulo", "label": "CAPÍTULO I",
-     "title": "DISPOSIÇÕES PRELIMINARES",
+    {"type": "capitulo", "label": "CAPÍTULO I", "title": "DISPOSIÇÕES PRELIMINARES",
      "start": 762, "end": 1313, "parent": ""},
-    {"type": "artigo", "label": "Art. 1º",
-     "start": 798, "end": 1313, "parent": ""},
-    {"type": "paragrafo", "label": "§ 1º",
-     "start": 891, "end": 950, "parent": "Art. 1º"}
+    {"type": "artigo", "label": "Art. 1º", "start": 798, "end": 1313, "parent": ""},
+    {"type": "paragrafo", "label": "§ 1º", "start": 891, "end": 950, "parent": "Art. 1º"}
   ],
-  "tables": [{"id": "p2t1", "page": 2,
-              "markdown": "| col1 | col2 |...",
-              "rows": 7, "cols": 4}],
-  "footnotes": [{"num": 1, "text": "Documento SIC nº ..."}]
+  "tables": [{"id": "p2t1", "page": 2, "markdown": "...", "rows": 7, "cols": 4}],
+  "footnotes": [{"num": 1, "text": "..."}]
 }
 ```
 
-#### Pipeline de cleaning
+**Pipeline de cleaning:**
 
 ```
 PDF
- │
  ├─► page.get_text("blocks", sort=True)   ← robusto a multi-coluna (33% do corpus)
- │
- ├─► page.find_tables() + heurística      ← descarta tabelas de coordenadas
- │   semântica (≥70% numérico)              UTM/CEG, mantém tabelas de prosa
- │
+ ├─► page.find_tables() + heurística      ← descarta tabelas de coordenadas UTM/CEG,
+ │                                          mantém tabelas de prosa
  ├─► detect_repeated_lines (≥3 págs)       ← header/footer dinâmico por doc
- │
- ├─► remove_boilerplate (regex hardcoded)
- │     • "AGÊNCIA NACIONAL DE ENERGIA ELÉTRICA – ANEEL" (linha solta)
- │     • "P. X Nota Técnica nº ..." / "Fl. X Nota Técnica nº ..."
- │     • "* A Nota Técnica é um documento emitido pelas Unidades..."
- │     • Linhas de underscores (divisores visuais)
- │     • "Este texto não substitui o publicado no Boletim Administrativo..."
- │     • "Retificado no D.O. de ..." / "(Tornada sem efeito pela...)"
- │     • Carimbos isolados de superintendência
- │
- ├─► fix_line_hyphenation                  ← só junta letra-letra
- │     "autori-\nzação" → "autorização"      (preserva "2021-\n55")
- │
+ ├─► remove_boilerplate (regex hardcoded)  ← cabeçalhos ANEEL, "P. X Nota Técnica",
+ │                                          divisores, retificações, carimbos
+ ├─► fix_line_hyphenation                  ← "autori-\nzação" → "autorização"
+ │                                          (preserva IDs como "2021-55")
  ├─► join_lone_paragraph_numbers           ← Voto/Nota: "12.\ntexto" → "12. texto"
- │
- ├─► extract_footnotes                     ← rodapés "1 Documento SIC nº ..."
- │   (saem do texto principal e vão               viram footnotes[]
- │    para campo separado)
- │
+ ├─► extract_footnotes                     ← rodapés saem do texto principal
  ├─► normalize_chars                       ← NFC, NBSP→space, aspas curvas→retas
- │
  └─► collapse_blank_lines                  ← \n\n\n+ → \n\n
-                                              espaços múltiplos → 1
 ```
 
-#### Extração estrutural (`structure[]`)
-
-Regex captura os marcadores e calcula offsets `(start, end)` dentro do
-`text` final. Hierarquia: **Anexo > Capítulo > Seção > Artigo > §**. Cada
-nó conhece seu parent (ex.: `§ 1º` → `parent: "Art. 1º"`).
-
-| Tipo       | Regex                                               | Exemplo                  |
-| ---------- | --------------------------------------------------- | ------------------------ |
-| capitulo   | `^CAP[ÍI]TULO [IVXLCDM]+ – TÍTULO`                  | `CAPÍTULO I - DISPOSIÇÕES` |
-| artigo     | `^Art\. \d+[ºo°]?`                                  | `Art. 12.`               |
-| paragrafo  | `^§ \d+[ºo°]? \| Parágrafo único`                   | `§ 2º`, `Parágrafo único`|
-| anexo      | `^ANEXO( [IVXLCDM]+)?`                              | `ANEXO I`                |
-| quadro     | `^Quadro \d+`                                       | `Quadro 2 – Informações` |
-| tabela     | `^Tabela \d+`                                       | `Tabela 1: Usinas`       |
-
-Esse índice é o que vai habilitar o **chunking Tier A** (Art./Anexo/§) na
-Fase 3 — sem precisar reparsing.
-
-#### Decisões de design (gravitando para qualidade)
-
-| Decisão                | Escolha                | Motivo                                                |
-| ---------------------- | ---------------------- | ----------------------------------------------------- |
-| Footnotes              | campo separado          | mantém texto principal limpo, ainda permite citar     |
-| Tabelas                | só semânticas (Markdown)| descarta coordenadas UTM/listas de CEG (não-recuperáveis) |
-| Multi-coluna           | sempre `blocks`+sort    | robusto, custa pouco                                  |
-| Headers/footers        | regex + heurística repetição | combina precisão (regex) com cobertura (heurística) |
-| Hifenização            | só letra-letra          | preserva IDs (`2021-55`), datas, códigos              |
-| Numeração solta        | join com próxima linha não-vazia | resolve `1.\nresolve:` em Votos/Notas        |
-| Workers                | `mp.cpu_count() - 1`    | paraleliza por documento (sem GIL)                    |
-| Retomada               | `--resume` + dedup pelo `doc_id` | idempotente em re-runs                       |
-
-#### Comando
+**Extração estrutural:** regex captura marcadores e calcula offsets `(start, end)`.
+Hierarquia: **Anexo > Capítulo > Seção > Artigo > §**. Habilita o chunking
+**Tier A** sem reparsing.
 
 ```bash
-# Corpus completo (~26.7k PDFs, ~30-60 min com 8 cores)
 python -m src.parse_pdfs \
   --pdfs-root data/pdfs_aneel \
   --out artifacts/parsed.jsonl \
   --workers 8
-
-# Smoke test nas 8 amostras de explore_pdfs.py
-python -m src.parse_pdfs --samples-only \
-  --out artifacts/parsed_samples.jsonl --workers 1
-
-# Retomar interrompido
-python -m src.parse_pdfs --resume \
-  --out artifacts/parsed.jsonl --workers 8
 ```
 
-#### Validação nas amostras
+Flags: `--samples-only` (smoke), `--resume` (idempotente), `--workers`.
 
-8/8 amostras processadas em 12.6s (1.6s/doc com 1 worker). Validação manual:
-
-| Doc                       | Title extraído              | Processo extraído     | Struct | Tables | Footnotes |
-| ------------------------- | --------------------------- | --------------------- | ------ | ------ | --------- |
-| `ren20221008` (RES Norm)  | ✅ `RESOLUÇÃO NORMATIVA ANEEL Nº 1.008...` | ✅ `48500.006312/2021-55` | 92     | 3      | 0         |
-| `reh20223008ti` (RES Hom) | ✅ `RESOLUÇÃO HOMOLOGATÓRIA Nº 3.008...`   | ✅ `48500.004911/2021-34` | 20     | 5      | 0         |
-| `rea20165599ti` (RES Aut) | ✅ `RESOLUÇÃO AUTORIZATIVA Nº 5.599...`    | ✅ `48500.000939/2014-73` | 7      | 0      | 0         |
-| `prt20153774` (Portaria)  | ✅ `PORTARIA N° 3.774...`                  | ✅ `48500.005223/2015-43` | 2      | 0      | 0         |
-| `dsp2022021spde` (Despacho) | ✅ `DESPACHO DECISÓRIO Nº 21/2022/SPE`   | ✅ `48000.001295/1992-12` | 1      | 3      | 0         |
-| `ndsp2022060` (Nota Téc)  | ✅ `Nota Técnica nº 01/2022-SGT/ANEEL`     | ✅ `48500.006465/2021-01` | 8      | 126    | 3         |
-| `nreh20162014` (Nota Téc) | ✅ `Nota Técnica n° 004/2016-SGT-SRM/ANEEL`| ✅ `48500.000315/2015-37` | 7      | 9      | 2         |
-| `area202210992_1` (Voto)  | ✅ `VOTO`                                  | ✅ `48500.003989/2012-41` | 5      | 2      | 4         |
-
-**Cleaning verificado** em ndsp2022060 (128 págs):
-- 0 ocorrências de footnote boilerplate
-- 0 ocorrências de "P. X Nota Técnica" headers de página
-- 0 divisores `_____`
-- 1 ocorrência residual de "AGÊNCIA NACIONAL..." (legítima, no corpo)
-- 3/3 footnotes extraídas para campo separado
-
-#### Resultados — corpus completo (n=26.731)
-
-Execução em 8 workers (cores), 1.780s = 29.7 min, **15.0 doc/s**, **0 falhas**.
-
-| Métrica                  | Valor             |
-| ------------------------ | ----------------- |
-| Docs processados         | 26.731 / 26.731 (**100%**) |
-| Falhas                   | 0                 |
-| Total chars              | 201,3 M           |
-| Tokens estimados         | 54,4 M            |
-| OCR-suspect              | 7 (0,03%)         |
-| Texto vazio (<100 chars) | 7 (0,03%)         |
-| Tabelas extraídas        | 39.390            |
-| Footnotes extraídas      | 8.274             |
-| Struct nodes médio       | 4,1 / doc         |
-| Tamanho `parsed.jsonl`   | 275 MB            |
-
-**Title extraction rate por tipo (atos principais):**
-
-| Tipo  | N total | Com title  | Taxa    |
-| ----- | ------- | ---------- | ------- |
-| `ren` | 154     | 154        | **100,0%** |
-| `rea` | 3.894   | 3.894      | **100,0%** |
-| `reh` | 474     | 474        | **100,0%** |
-| `prt` | 3.174   | 3.167      | 99,8%   |
-| `ndsp`| 478     | 476        | 99,6%   |
-| `dsp` | 9.932   | 9.844      | 99,1%   |
-| `nreh`| 224     | 221        | 98,7%   |
-| `aprt`| 562     | 553        | 98,4%   |
-| `area`| 3.919   | 3.836      | 97,9%   |
-| `areh`| 475     | 463        | 97,5%   |
-| `adsp`| 2.098   | 1.856      | 88,5%   |
-| `aren`| 205     | 178        | 86,8%   |
-
-Tipos com taxa baixa (`ect`=2%, `acp`=20%, `aap`=12%) são **extratos** e
-**comunicados** que **não têm cabeçalho formal** — comportamento esperado,
-não é bug. Esses tipos representam < 3% do corpus.
-
-**Processo extraction rate**: ≥95% para `rea`/`reh`/`prt`, ≥89% para
-`dsp`/`adsp`/`ndsp`/`aprt`, com média geral de ~88%.
-
-#### Saídas
-
-```
-artifacts/
-├── parsed.jsonl          # 1 linha por doc, 26.731 linhas, 275 MB
-└── parse.log             # logs de execução, throughput, falhas
-```
+**Resultado em corpus completo (n=26.731):** 29,7 min @ 8 workers, **15,0 doc/s**,
+**0 falhas**, 54,4 M tokens, 39.390 tabelas, 8.274 footnotes. Title extraction
+≥97,9% nos atos principais (REN/REA/REH/PRT/NDSP/DSP/AREA).
 
 ---
 
-### Fase 3 — Chunking (✅ concluída)
+### Chunking
 
 Módulo: `src/chunk.py`
 
 Estratégia em **3 tiers** baseada na análise empírica de heterogeneidade
-do corpus (ver [Análise do Corpus](#análise-do-corpus)).
+do corpus.
 
-#### Tier A — denso jurídico, alta prioridade RAG
+**Tier A — denso jurídico (REN, REH, RES, NREH, NDSP, INA)**
+- Split por regex `r'^\s*Art\.?\s*\d+'` + `Anexo` separado
+- Sub-split por `§` se artigo > 1500 tokens
+- Overlap zero (artigos são unidades naturais)
 
-Documentos onde a unidade natural de recuperação é o **artigo** ou o
-**anexo**.
+**Tier B — médio, prosa decisória (AREA, ADSP, APRT, REA, PRT)**
+- Split por parágrafo, merge até ~500 tokens
+- Overlap 50 tokens
 
-- **Tipos:** REN, REH, RES, NREH, NDSP, INA
-- **Estratégia:** split por regex `r'^\s*Art\.?\s*\d+'` + `Anexo` separado
-- **Sub-split:** se artigo > 1500 tokens, divide por `§`
-- **Overlap:** zero (artigos são unidades naturais)
+**Tier C — curto (DSP, ECP, ECT, EDT, AVS, ACP, ATS)**
+- PDF inteiro = 1 chunk (quase todos < 2k tokens)
 
-#### Tier B — médio, prosa decisória
+**Resultado em corpus completo:** 26.731 docs → **160.267 chunks** em 8 s,
+0 duplicados, hard cap de 1500 tokens respeitado.
+Distribuição: Tier A 98.709 (61,6%) / Tier B 50.052 (31,2%) / Tier C 11.506 (7,2%).
 
-- **Tipos:** AREA, ADSP, APRT, REA, PRT
-- **Estratégia:** split por parágrafo, merge até ~500 tokens
-- **Overlap:** 50 tokens
-
-#### Tier C — curto, baixa relevância regulatória
-
-- **Tipos:** DSP, ECP, ECT, EDT, AVS, ACP, ATS
-- **Estratégia:** PDF inteiro = 1 chunk (quase todos <2k tokens)
-
-#### Resultados (corpus completo)
-
-- 26.731 docs → **160.267 chunks** em 8 s
-- Tier A: 98.709 (61,6%) — REA/AREA/PRT/ADSP/DSP dominam
-- Tier B:  50.052 (31,2%)
-- Tier C:  11.506 (7,2%)
-- 0 chunks duplicados, hard cap de 1500 tokens respeitado
-
-#### Metadado por chunk (schema final)
+**Schema do chunk:**
 
 ```json
 {
@@ -670,10 +478,7 @@ Documentos onde a unidade natural de recuperação é o **artigo** ou o
   "section_type": "artigo",
   "section_label": "Art. 1º",
   "section_parent": "",
-  "section_title": "",
   "title": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.008, DE 15 DE MARÇO DE 2022",
-  "ementa": "Dispõe sobre a Conta Escassez Hídrica...",
-  "filename": "ren20221008.pdf",
   "url": "https://www2.aneel.gov.br/cedoc/ren20221008.pdf",
   "char_start": 798, "char_end": 1313,
   "n_chars": 515, "n_tokens_est": 129,
@@ -683,72 +488,43 @@ Documentos onde a unidade natural de recuperação é o **artigo** ou o
 
 ---
 
-### Fase 4 — Indexação (✅ concluída)
+### Indexação
 
 Módulo: `src/index.py`
 
-#### Embeddings (dense + sparse num único forward)
-
-- Modelo: **`BAAI/bge-m3`** commit `5617a9f6` (1024-dim, multilingual, contexto até 8k)
+**Embeddings:**
+- `BAAI/bge-m3` (1024-dim, multilingual, contexto até 8k)
 - Backend: `FlagEmbedding.BGEM3FlagModel` (gera dense + sparse em 1 forward)
 - GPU autodetect (CUDA → Apple MPS → CPU); fp16 quando não-CPU
 - `batch-size` configurável (default 32; **80 recomendado em GPU 6+ GB**)
 
-#### Vector store
+**Vector store:**
+- **Qdrant 1.12.4** via `docker-compose.yml`
+- Coleção `aneel_chunks` (named vectors `dense` + `sparse`)
+- Distance: cosine; sparse via `lexical_weights` do bge-m3
+- Payload indexado em `tipo_ato`, `year`, `tier`, `doc_id`
+- **Texto cru no payload** — sem lookup posterior em arquivos locais
 
-- **Qdrant 1.12.4** rodando via `docker-compose.yml`
-- Coleção: `aneel_chunks` (named vectors `dense` + `sparse`)
-- Distance: cosine; sparse usa `lexical_weights` do bge-m3
-- Payload indexado nos campos: `tipo_ato`, `year`, `tier`, `doc_id`
-- **Texto cru no payload** (decisão chave de design — examinador não precisa
-  de lookup posterior em arquivos locais)
+**Sparse / lexical:**
+- bge-m3 sparse (mesmo passe do dense)
+- BM25 Okapi via `rank_bm25` como redundância textual independente
+  (regex `\w+` lowercase, sem stopwords — texto jurídico precisa dos
+  conectores, IDF cuida do peso)
 
-#### Sparse / lexical
-
-- **bge-m3 sparse** (vem do mesmo passe do dense, no Qdrant como named vector)
-- **BM25 Okapi** via `rank_bm25` como redundância textual independente
-  (tokenizer regex `\w+` lowercase, sem stopwords — texto jurídico precisa
-  dos conectores; IDF cuida do peso)
-
-#### Resultados (corpus completo, RTX 3050 6 GB Laptop)
-
-| Métrica | Valor |
-|---|---|
-| Chunks indexados | **160.267 / 160.267 (100%)** |
-| Tempo BM25 | 31 s → 244 MB pickle |
-| Tempo dense+sparse | **130,1 min @ 20,5 ch/s, batch 80** |
-| VRAM em uso | 3,1 GB / 6 GB (folga p/ batch maior em GPU >6 GB) |
-| Snapshot Qdrant | 1,22 GB |
-| Smoke restore | drop → upload → 14 s → mesmas estatísticas → 5 queries dense top-3 coerente |
-
-#### Comando
+**Resultado em corpus completo (RTX 3050 6 GB):** 160.267 chunks indexados,
+130,1 min @ 20,5 ch/s (batch 80), VRAM 3,1 / 6 GB. BM25 separadamente em 31 s
+→ pickle de 244 MB. Snapshot Qdrant: 1,22 GB.
 
 ```bash
-# Corpus completo (~2 h em RTX 3050 com batch 80)
 python -m src.index \
   --chunks artifacts/chunks.jsonl \
   --bm25-out artifacts/bm25_index.pkl \
   --batch-size 80
-
-# Smoke (200 chunks, sem mexer no Qdrant principal)
-python -m src.index \
-  --chunks artifacts/chunks.jsonl \
-  --bm25-out /tmp/bm25_smoke.pkl \
-  --collection aneel_chunks_smoke \
-  --limit 200
-
-# Só BM25 (já indexou dense, refazer só BM25)
-python -m src.index \
-  --chunks artifacts/chunks.jsonl \
-  --bm25-out artifacts/bm25_index.pkl \
-  --skip-dense
 ```
 
-#### Snapshot e Release
+Flags: `--limit` (smoke), `--collection`, `--skip-dense` (refazer só BM25).
 
-Após indexação, geramos snapshot do Qdrant via API e publicamos como
-[GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0).
-Detalhes do uso em [Caminho 2](#caminho-2--bootstrap-com-snapshot-pré-construído-).
+**Snapshot e Release:**
 
 ```bash
 # Cria snapshot (~6 s, 1,22 GB)
@@ -761,44 +537,53 @@ docker cp aneel-qdrant:/qdrant/snapshots/aneel_chunks/<snapshot-name>.snapshot \
 
 ---
 
-### Fase 5 — Retrieval (✅ concluída)
+### Retrieval
 
-Módulo: `src/retrieve.py` (desenvolvido por @pedro)
+Módulo: `src/retrieve.py`
 
-Implementa retrieval híbrido em 5 etapas:
+Pipeline híbrido em 5 etapas:
 
-1. **Embedding (bge-m3):** transforma query em dense (1024-dim) + sparse (lexical)
-2. **Dense search:** top-30 chunks do Qdrant por similarity cosine
-3. **BM25 search:** top-30 chunks via índice BM25 serializado
+1. **Embedding (bge-m3):** transforma query em dense (1024-dim)
+2. **Dense search:** top-30 do Qdrant por similarity cosine
+3. **BM25 search:** top-30 via índice BM25 serializado
 4. **RRF fusion:** combina rankings com Reciprocal Rank Fusion (k=60)
    ```
    score(chunk) = Σ 1 / (k + rank_in_list_i)   para cada lista i
    ```
    Sem tuning de pesos, robusto a variações entre modelos.
-5. **Reranking:** bge-reranker-v2-m3 ordena top-30 → top-10, refina scores
+5. **Reranking:** `bge-reranker-v2-m3` reordena top-30 → top-10, refina scores
 
-**Recursos implementados:**
-- Device autodetection (CUDA → MPS → CPU com fallback)
-- Explícito `load_bm25()`, `load_embedder()`, `load_reranker()` (sem singletons)
-- Filtros opcionais por metadata (tipo_ato, year, tier)
-- Retorna `List[Hit]` com score, text, url, metadados inline
-- Caller controla lifecycle dos objetos (sem magic caching)
+**Implementação:**
+- Queries dense + BM25 em paralelo (`ThreadPoolExecutor(max_workers=2)`)
+- Device autodetection (CUDA → CPU; flag `--device {auto,cpu,cuda,mps}` força)
+- Loaders explícitos `load_bm25()`, `load_embedder()`, `load_reranker()`
+  (sem singletons mágicos — caller controla lifecycle)
+- Filtros opcionais por payload (`tipo_ato`, `year`, `tier`) aplicados em
+  ambos os retrievers (Qdrant via `query_filter`, BM25 via numpy mask)
+- Retorna `List[Hit]` com `score`, `score_rrf`, `score_rerank`, `rank_dense`,
+  `rank_bm25`, `payload` inline
 
-**Validado em:**
-- 79 golden set questions
-- Corpus de 160k chunks (Tier A/B/C heterogêneo)
-- Performance: ~5-10 segundos por query (embedding 1-2s, rerank <1s)
+```bash
+# Query simples
+python -m src.retrieve --query "tarifa de uso do sistema de distribuição"
+
+# Com filtros e top-K customizado
+python -m src.retrieve --query "..." --tipo-ato ren --year 2022 --top-k 5
+
+# Sem reranker (mais rápido), forçando CPU, saída JSON
+python -m src.retrieve --query "..." --no-rerank --device cpu --json
+```
+
+**Performance típica:** ~5-10 s por query (embedding 1-2 s, rerank 7-9 s em CPU).
 
 ---
 
-### Fase 6 — Geração (✅ concluída)
+### Geração
 
 Módulo: `src/generate.py`
 
-Recebe a lista de `Hit` da Fase 5 e gera uma resposta fundamentada via
-**Claude Sonnet 4.6**, com citações obrigatórias inline `[N]`.
-
-#### Pipeline
+Recebe a lista de `Hit` da etapa de retrieval e gera resposta fundamentada
+via **Claude Sonnet 4.6**, com citações obrigatórias inline `[N]`.
 
 ```
 query + top-K Hits
@@ -812,261 +597,144 @@ query + top-K Hits
   │    • resposta em PT-BR
   │    • fallback sem alucinação: "Não encontrei informação suficiente…"
   │
-  ├─ Claude Sonnet 4.6  (streaming no CLI, batch para Ragas)
+  ├─ Claude Sonnet 4.6  (streaming no CLI, batch para avaliação)
   │
   └─ extrai [N] citados programaticamente → monta citations[]
 ```
 
-#### Schema de saída `GenerationResult`
+**Schema de saída `GenerationResult`:**
 
 ```json
 {
   "answer": "A TUSD é calculada conforme os Procedimentos de Distribuição [1]. No caso de autoprodução, aplica-se desconto de 50% [2].",
   "citations": [
-    {
-      "n": 1,
-      "chunk_id": "2022/ren20221000__art5",
-      "url": "https://www2.aneel.gov.br/cedoc/ren20221000.pdf",
-      "tipo_ato": "ren",
-      "title": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.000",
-      "section": "Art. 5º"
-    },
-    {
-      "n": 2,
-      "chunk_id": "2022/reh20223000__art2",
-      "url": "https://www2.aneel.gov.br/cedoc/reh20223000.pdf",
-      "tipo_ato": "reh",
-      "title": "RESOLUÇÃO HOMOLOGATÓRIA Nº 3.000",
-      "section": "Art. 2º"
-    }
+    {"n": 1, "chunk_id": "2022/ren20221000__art5",
+     "url": "https://www2.aneel.gov.br/cedoc/ren20221000.pdf",
+     "tipo_ato": "ren", "title": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.000",
+     "section": "Art. 5º"},
+    {"n": 2, "chunk_id": "2022/reh20223000__art2",
+     "url": "https://www2.aneel.gov.br/cedoc/reh20223000.pdf",
+     "tipo_ato": "reh", "title": "RESOLUÇÃO HOMOLOGATÓRIA Nº 3.000",
+     "section": "Art. 2º"}
   ],
   "query": "o que é TUSD e como é calculada?",
   "n_chunks": 10,
   "model": "claude-sonnet-4-6",
-  "input_tokens": 4280,
-  "output_tokens": 310,
-  "cache_read_tokens": 312,
+  "input_tokens": 4280, "output_tokens": 310, "cache_read_tokens": 312,
   "latency_ms": 2100,
   "not_found": false
 }
 ```
 
-#### Decisões de design
+**Decisões de design:**
 
 | Decisão | Escolha | Motivo |
 |---|---|---|
 | Prompt caching | `cache_control="ephemeral"` no system | Reutiliza cache em chamadas consecutivas, reduz latência e custo |
 | Anti-alucinação | Regra explícita no system + fallback padronizado | LLM não pode inventar; resposta fora do contexto dispara sinal fixo |
-| Citations | Inline `[N]` extraídas por regex do texto gerado | Formato limpo para o usuário; `citations[]` estruturado para Ragas |
+| Citations | Inline `[N]` extraídas por regex | Formato limpo + `citations[]` estruturado para integrações |
 | Streaming | Ativado por padrão no CLI | Feedback imediato; desativável com `--no-stream` ou `--json` |
-| Interface Python | `generate(query, hits, client)` → `GenerationResult` | Reutilizável pela Fase 7 (Ragas) sem overhead de CLI |
-
-#### Comandos
+| Interface Python | `generate(query, hits, client)` → `GenerationResult` | Reutilizável pela avaliação sem overhead de CLI |
 
 ```bash
 # Pré-requisito: .env com ANTHROPIC_API_KEY
-cp .env.example .env  # editar e preencher a chave
-
-# Query interativa (streaming)
 make generate QUERY="o que é TUSD e como ela é calculada?"
 
-# Passando filtros
+# Com filtros
 python -m src.generate \
   --query "prazo para ligação nova de baixa tensão" \
   --tipo-ato ren --year 2022 --top-k 8
 
-# Saída JSON (para integração / Ragas)
-python -m src.generate \
-  --query "o que é microgeração distribuída?" \
-  --json --no-stream > result.json
+# Saída JSON (para integração)
+python -m src.generate --query "..." --json --no-stream > result.json
 ```
 
 ---
 
-### Fase 7 — Avaliação (✅ concluída)
+## Avaliação
 
-Módulo: `src/evaluate.py` (desenvolvido por @mateus, Fase 7 concluída)
+Módulo: `eval/evaluate.py` + golden set em `eval/golden_set.jsonl`.
 
-#### Golden set
+### Golden Set
 
-**Arquivo:** `eval/golden_set.jsonl` — **79 questões** estratificadas por tipo de ato e ano.
+**79 questões** estratificadas por tipo de ato e ano, geradas via Claude
+Sonnet 4.6 a partir de amostras representativas do corpus.
 
 **Distribuição:**
-- Factuais (30): "qual o prazo de X?", "o que é Y?"
-- Conceituais (15): "explique o conceito de tarifa de uso"
-- Comparativas (9): "diferença entre X e Y" (10 planejadas, 9 executadas por parse variability)
-- Multi-hop (15): requer 2+ documentos
-- Negativas (10): "resposta = não consta"
+
+| Tipo | N | Descrição |
+|---|---|---|
+| Factual | 30 | "qual o prazo de X?", "o que é Y?" |
+| Conceitual | 15 | "explique o conceito de tarifa de uso" |
+| Comparativa | 9 | "diferença entre X e Y" |
+| Multi-hop | 15 | requer 2+ documentos distintos |
+| Negativa | 10 | resposta esperada = "não consta" |
 
 **Schema:**
 
 ```json
 {
-  "id": "q001",
+  "id": "gs_001",
   "pergunta": "Qual o prazo máximo para a distribuidora atender solicitação de ligação nova?",
   "tipo_query": "factual",
   "resposta_esperada": "Até 2 dias úteis conforme REN 2019/2020",
   "docs_relevantes": ["2022/ren20221000"],
-  "tipo_ato_filtro": ["ren"]
+  "tipo_ato_filtro": "ren",
+  "year_filtro": 2022
 }
 ```
 
-#### Resultados de Avaliação
+### Métricas de Retrieval
 
-**Retrieval-only (69 questões não-negativas):**
+**69 questões não-negativas, top-20 com reranker:**
 
-| Métrica | Valor | Avaliação |
+| Métrica | Valor |
+|---|---|
+| **hit@5**  | **71,0%** |
+| **hit@10** | **72,5%** |
+| **hit@20** | **81,2%** |
+| **MRR**    | **0,619** |
+
+**Quebra por tipo de questão:**
+
+| Tipo | N | hit@5 | hit@10 | hit@20 | MRR |
+|---|---|---|---|---|---|
+| factual | 30 | **86,7%** | 86,7% | 96,7% | 0,794 |
+| conceptual | 15 | 66,7% | 66,7% | 80,0% | 0,576 |
+| comparative | 9 | 55,6% | 55,6% | 66,7% | 0,506 |
+| multi_hop | 15 | 53,3% | 60,0% | 60,0% | 0,380 |
+
+### Latência
+
+| Estágio | p50 | p95 |
 |---|---|---|
-| hit@5 | 0.7101 (71%) | 👍 Bom — doc relevante no top-5 |
-| hit@10 | 0.7246 (72%) | 👍 Bom — doc relevante no top-10 |
-| hit@20 | 0.8116 (81%) | 👍 Sólido — doc relevante no top-20 |
-| MRR | 0.6190 | 👍 Bom — posição média do primeiro relevante ~1.6 |
+| Retrieval (embedding + RRF + rerank) | 2,3 s | 6,8 s |
+| End-to-end com geração Claude | 3,0 s | 21,9 s |
 
-**Latency end-to-end (com geração, 20 questões):**
-
-| P-ésimo | Latência | Nota |
-|---|---|---|
-| p50 | 3.0s | Query → embedding → retrieval + rerank |
-| p95 | 21.9s | Inclui latency Claude API (médio 5-10s) |
-
-**Geração:** parada em 13/79 questões por exaustão de créditos Anthropic API. Pode ser reexecutada após recharge.
-
-#### Decisões de design (Fase 7)
-
-| Aspecto | Escolha | Motivo |
-|---|---|---|
-| Métrica "faithfulness" | Removida (Ragas 0.2 API breaking change) | Substituída por LLM simples (claude-haiku-4-5) |
-| Métrica "answer_relevance" | Removida | Idem |
-| Estratégia alternativa | Implementar função `run_llm_eval()` que avalia 2 binary metrics | Rápido, direto, sem overhead Ragas |
-| Golden set generation | Stratified sampling (tipo_ato, year) | Assegura cobertura representativa |
-| Golden set factor | 2× oversampling | Compensa variabilidade do parsing em Tier B |
-
-#### Métricas
-
-| Categoria | Métrica | O que mede | Status |
-|---|---|---|---|
-| Retrieval | hit@5, hit@10, hit@20 | Doc relevante nos top-k | ✅ 71-81% |
-| Retrieval | MRR | Posição média do primeiro relevante | ✅ 0.619 |
-| Generation | Latency (p50/p95) | Tempo query → resposta | ✅ 3s / 21.9s |
-| Negative queries | Resposta "não consta" | Evita alucinações | ✅ 10 casos testados |
-
-#### Comandos
+### Comandos
 
 ```bash
-# Gerar golden set (~14 min, custa tokens — só rodar 1x, ou quando o corpus mudar)
+# Gerar golden set (~14 min, custa tokens — só rodar 1× ou quando o corpus mudar)
 make golden-set
 
-# Avaliar só retrieval (rápido, ~3 min, sem custo de API):
+# Avaliar só retrieval (rápido, ~3 min, sem custo de API)
 make evaluate
 
 # Avaliação completa: retrieval + geração + LLM eval (~30 min, custa tokens)
 make evaluate-full
 
-# Smoke test de geração com limite de questões:
+# Smoke test de geração com limite de questões
 make evaluate-full GEN_LIMIT=10
-
-# Equivalente raw (sem make):
-python -m eval.evaluate                          # retrieval-only
-python -m eval.evaluate --with-generation        # full
-python -m eval.evaluate --with-generation --gen-limit 10
 ```
 
-#### Saídas
-
-```
-eval/
-├── golden_set.jsonl               # 79 questões (versionado, ground truth)
-├── golden_set_raw.jsonl           # com refs para revisão humana (versionado)
-├── eval_results.jsonl             # resultados por questão (gitignored)
-└── eval_summary.json              # métricas agregadas (gitignored)
-```
-
----
-
-### Fase 8 — Serving (opcional)
-
-- **FastAPI:** `POST /query` retorna JSON estruturado
-- **Streamlit:** UI interativa com filtros por tipo de ato e ano,
-  exibe fontes inline com links
-
-Será feito **se houver tempo** após as Fases 2-7.
-
----
-
-## Replicabilidade
-
-### Estratégia de defesa em camadas
-
-1. **Versões fixadas** em `requirements.txt` (`==`, não `>=`)
-2. **Docker Compose** sobe Qdrant determinístico, sem instalar nada local
-3. **Modelos cacheados** automaticamente pelo HuggingFace (`~/.cache/huggingface`)
-4. **GPU autodetect** com fallback CPU avisado (warning explícito de tempo)
-5. **Snapshot pré-construído** publicado como [GitHub Release v0.4.0](https://github.com/Mateus-Nery/desafio_nlp/releases/tag/v0.4.0) — examinador pula a parte cara em ~5-10 min
-6. **Smoke test** rápido via `scripts/smoke_query_qdrant.py` (~20 s) valida que retrieval responde após restore
-7. **Idempotência total** — rodar 2× não quebra nada (UUIDs determinísticos por `chunk_id`, `--resume` em downloader/parser)
-8. **Erros descritivos** — falta de chave/modelo dá mensagem clara, não stacktrace cru
-
-### Cross-platform
-
-Todos os scripts são testados em:
-
-- macOS (Apple Silicon e Intel)
-- Linux (Ubuntu 22.04+)
-- Windows (PowerShell)
-
-Único ponto de atenção: paths usam `pathlib.Path` (não strings).
-
-### O que está versionado vs gerado
-
-| Categoria | Versionado? |
-|---|---|
-| Código (`src/`, `scripts/`) | ✅ Sim |
-| Configs (`pyproject.toml`, `Makefile`, `docker-compose.yml`) | ✅ Sim |
-| Golden set (`eval/golden_set.jsonl`) | ✅ Sim |
-| JSONs ANEEL (`data/dados_grupo_estudos/`) | ❌ Não (compartilhados separadamente) |
-| PDFs baixados (`data/pdfs_aneel/`) | ❌ Não (4 GB; regerado via `make download`) |
-| Artefatos (`artifacts/`) | ❌ Não (publicados como GitHub Release) |
-| Modelos | ❌ Não (cacheados pelo HuggingFace) |
-
----
-
-## Avaliação & Golden Set
-
-### Estratégia híbrida de criação do golden set
-
-Para conciliar qualidade com viabilidade de tempo:
-
-1. **Geração automática** via LLM lendo amostras representativas dos
-   tipos de ato (DSP, REN, REH, RES, PRT, NDSP) — produz ~80 candidatas
-2. **Revisão humana** corrige perguntas ambíguas, ajusta `docs_relevantes`,
-   remove perguntas trivais demais (~30 min de trabalho)
-
-Cobertura desejada:
-
-| Categoria de pergunta | Quantidade |
-|---|---|
-| Factuais simples ("qual o prazo de X?") | ~30 |
-| Conceituais ("o que é tarifa de uso?") | ~15 |
-| Comparativas ("diferença entre X e Y") | ~10 |
-| Multi-hop (requer 2+ docs) | ~15 |
-| Negativas/edge cases (resposta = "não consta") | ~10 |
-
-### Critérios de sucesso
-
-Metas mínimas:
-
-- **hit@10 ≥ 0.85** (retrieval encontra doc relevante 85% do tempo)
-- **MRR ≥ 0.55** (média do inverso da posição do primeiro relevante)
-- **Faithfulness ≥ 0.85** (resposta suportada pelos docs)
-- **Answer relevance ≥ 0.85** (resposta endereça a pergunta)
-- **p95 latency ≤ 5s** (com Claude API, sem rerank em GPU)
+Saídas: `eval/eval_results.jsonl` (por questão), `eval/eval_summary.json`
+(agregado).
 
 ---
 
 ## Análise do Corpus
 
-Roda em todos os 26.731 PDFs baixados (script:
-[`scripts/analyze_pdfs.py`](scripts/analyze_pdfs.py)):
+Roda em todos os 26.731 PDFs baixados ([`scripts/analyze_pdfs.py`](scripts/analyze_pdfs.py)):
 
 ```bash
 python scripts/analyze_pdfs.py \
@@ -1074,31 +742,25 @@ python scripts/analyze_pdfs.py \
     --report-json data/pdfs_aneel/_analysis.json
 ```
 
-Usa **PyMuPDF (`fitz`)** e gera, por PDF: páginas, bytes, chars extraíveis,
-ratio texto/imagem, detecção heurística de multi-coluna, metadado
-(creator/producer/version) e flag `ocr_suspect`.
-
-### Saúde dos PDFs (n=26.731)
+**Saúde dos PDFs (n=26.731):**
 
 - ✅ **100% text-native** — 4 OCR-suspect (0,01%), 0 encrypted, 0 erros
-- ✅ **Origem:** 90,8% MS Word, 7,1% Acrobat PDFMaker, 0,8% iText
-- ✅ **PDF versions:** 1.7 (73,4%), 1.5 (21,1%), 1.6 (5,3%), 1.4 (0,2%)
-- ✅ **Multi-coluna:** 33,7% (concentrado em votos/decisões)
-- ✅ **Conclusão:** OCR é desnecessário; **parser único PyMuPDF basta**
+- ✅ Origem: 90,8% MS Word, 7,1% Acrobat PDFMaker, 0,8% iText
+- ✅ PDF versions: 1.7 (73,4%), 1.5 (21,1%), 1.6 (5,3%), 1.4 (0,2%)
+- ✅ Multi-coluna: 33,7% (concentrado em votos/decisões)
+- ✅ **OCR é desnecessário; parser único PyMuPDF basta**
 
-### Tamanho do corpus
+**Tamanho do corpus:**
 
 | Métrica | Valor |
 |---|---|
 | PDFs baixados | 26.731 |
 | Tamanho em disco | 4,04 GB |
 | Páginas totais | 117.005 |
-| Texto bruto extraído | ~202 MB |
-| Tokens estimados (~4 chars/tok) | **~52,9 milhões** |
+| Tokens estimados (~4 chars/tok) | **~54 milhões** |
 | Média de páginas por PDF | 4,38 |
-| Média de chars por página | 1.809 |
 
-### Distribuição por tipo de ato (top 10 = 95% do corpus)
+**Distribuição por tipo de ato (top 10 = 95% do corpus):**
 
 | Tipo | n | % | pgs p50 | Tier | multi-col |
 |---|---|---|---|---|---|
@@ -1113,8 +775,6 @@ ratio texto/imagem, detecção heurística de multi-coluna, metadado
 | REH (Resolução Homologatória) | 474 | 1,8% | 8 | A | 74% |
 | ECT (Extrato) | 350 | 1,3% | 1 | C | 0% |
 
-Relatório completo per-PDF em `data/pdfs_aneel/_analysis.json`.
-
 ---
 
 ## Decisões de Arquitetura
@@ -1123,78 +783,43 @@ Relatório completo per-PDF em `data/pdfs_aneel/_analysis.json`.
 
 - **Qualidade:** SOTA em multilingual retrieval, especialmente PT-BR
 - **Versatilidade:** gera dense + sparse + ColBERT-style num único forward
-- **Sem dependência de API:** roda local, examinador não precisa de chave
-- **Custo:** zero recorrente
+- **Sem dependência de API:** roda local, sem chave externa
 - **Tradeoff aceito:** pesa 2 GB e é mais lento em CPU que e5-base —
   compensado por snapshot pré-construído
 
 ### Por que Qdrant (e não Chroma/FAISS/pgvector)?
 
-- **Filtros nativos por payload** — essencial para `tipo_ato`, `ano`, `tier`
-- **Hybrid search built-in** (dense + sparse no mesmo query)
+- **Filtros nativos por payload** — essencial para `tipo_ato`, `year`, `tier`
+- **Hybrid search built-in** (dense + sparse na mesma query)
 - **Snapshots restauráveis** — chave da estratégia de replicabilidade
 - **Performance** em corpus grande (~200k pontos é tranquilo)
-- **Tradeoff aceito:** precisa Docker — examinadores autorizam Docker
 
 ### Por que Claude Sonnet 4.6 (e não GPT-4/local)?
 
-- **PT-BR:** qualidade superior a GPT-4 em nuances jurídicas brasileiras
+- **PT-BR jurídico:** qualidade superior em nuances jurídicas brasileiras
 - **Citações:** segue instruções de citar fontes melhor que outros
-- **Contexto longo:** 200k tokens permite passar muitos chunks sem perder
-- **Custo previsível:** ~$3/$15 por M tokens
-- **Tradeoff aceito:** requer API key — documentado e justificado
+- **Contexto longo:** 200k tokens permite passar muitos chunks
+- **Prompt caching:** reduz latência e custo em workloads repetidos
 
 ### Por que 3-tier chunking (e não chunking uniforme)?
 
 - **Heterogeneidade extrema** do corpus (DSP de 1 pg vs NREH de 33 pgs)
 - **Estrutura jurídica clara** — artigos são unidades semânticas naturais
-- **Análise empírica** mostra que prevalência de marcadores (`Art.`,
-  `§`) varia drasticamente entre tipos
-- **Eficiência de retrieval** — chunks com granularidade adequada ao
-  conteúdo dão melhor recall
+- **Análise empírica** mostra que prevalência de marcadores (`Art.`, `§`)
+  varia drasticamente entre tipos
+- **Recall melhor** — chunks com granularidade adequada ao conteúdo
 
 ### Por que RRF (e não weighted sum)?
 
-- **Robusto sem tuning** — não precisa otimizar pesos α dense + (1-α)
-  sparse
+- **Robusto sem tuning** — não precisa otimizar pesos α dense + (1-α) sparse
 - **Insensível a magnitudes** — scores de modelos diferentes não são
   comparáveis em valor absoluto
 - **Padrão da indústria** — Vespa, Elasticsearch, Cohere usam
 
----
+### Por que dense + BM25 (e não dense + sparse + BM25)?
 
-## Roadmap
-
-| Fase | Status | Detalhes |
-|---|---|---|
-| 1. Ingestão (download) | ✅ Concluída | 26.731 PDFs em 13 min |
-| 1b. Análise exploratória | ✅ Concluída | 100% text-native, 0 OCR |
-| 2. Parser PyMuPDF | ✅ Concluída | 26.731 docs em 29,7 min, 54,4 M tokens |
-| 3. Chunking 3-tier | ✅ Concluída | 160.267 chunks em 8 s |
-| 4. Indexação (embed + Qdrant + BM25) | ✅ Concluída | 130 min em RTX 3050 (batch 80) |
-| Snapshot + Release | ✅ Concluída | v0.4.0 publicada (1,46 GB de assets) |
-| Makefile (atalhos make restore-artifacts/smoke/all) | ✅ Concluída | testado end-to-end |
-| 5. Retrieval (hybrid + rerank) | ✅ Concluída | Dense (bge-m3) + BM25 + RRF + rerank |
-| 6. Geração (Claude + prompt caching) | ✅ Concluída | Sonnet 4.6 com citações enforçadas, ~2-5s/query |
-| 7. Avaliação (golden set + métricas) | ✅ Concluída | 79 questões, hit@10=0.7246, MRR=0.619 |
-| 8. Serving (FastAPI + Streamlit) | 📋 Opcional | endpoint `/query` + UI demo (future) |
-
----
-
-## Setup mínimo (legacy, Fase 1 standalone)
-
-Caso queira rodar **só o downloader** sem o resto do pipeline:
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install curl_cffi tqdm
-
-python scripts/download_aneel_pdfs.py `
-    --json-dir data/dados_grupo_estudos `
-    --output-dir data/pdfs_aneel `
-    --concurrency 8
-```
-
-Requer Python 3.11+. Para a análise exploratória adicional, instale também
-`pymupdf`.
+Dense já cobre polissemia/sinônimos (vetores semânticos), BM25 cobre jargão
+raro com IDF do corpus. Sparse do bge-m3 é dominado por essa combinação —
+sua contribuição marginal é pequena e custa uma terceira query. Caso o golden
+set indique ganho, basta adicionar `_sparse_search` como 3ª lista no
+`rrf_fuse`.

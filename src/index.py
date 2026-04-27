@@ -1,7 +1,5 @@
 """Indexador ANEEL — chunks.jsonl → Qdrant (dense+sparse) + BM25 pickle.
 
-Fase 4 do RAG:
-
   chunks.jsonl
        │
        ├──▶ BM25 (rank_bm25)         ──▶ artifacts/bm25_index.pkl

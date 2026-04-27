@@ -1,7 +1,5 @@
 """Geração ANEEL — hits de retrieve.py → resposta com citações (Claude Sonnet 4.6).
 
-Fase 6 do RAG:
-
   query + top-K Hits (de retrieve.py)
     │
     ├─ build_context_block()   monta bloco numerado [1]…[K] com metadados
@@ -332,9 +330,27 @@ def generate(
 # CLI
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _load_dotenv() -> None:
+    """Carrega variáveis do .env na raiz do repo (sem sobrescrever as já setadas)."""
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key and not os.environ.get(key):
+            os.environ[key] = val
+
+
 def main(argv: list[str] | None = None) -> int:
+    _load_dotenv()
+
     ap = argparse.ArgumentParser(
-        description="Fase 6: query → retrieve → generate com Claude Sonnet 4.6"
+        description="query → retrieve → generate com Claude Sonnet 4.6"
     )
     ap.add_argument("--query", "-q", required=True, help="Pergunta em linguagem natural")
     ap.add_argument("--top-k", type=int, default=DEFAULT_TOP_K, help="Chunks no contexto")
